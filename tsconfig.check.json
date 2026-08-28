@@ -1,5 +1,10 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["globals.d.ts", "packages/**/*.ts", "apps/**/src/**/*.ts"],
+  "include": [
+    "globals.d.ts",
+    "packages/**/*.ts",
+    "apps/**/src/**/*.ts",
+    "scripts/**/*.ts"
+  ],
   "exclude": ["**/*.test.ts"]
 }
