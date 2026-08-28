@@ -4,6 +4,7 @@ import {
   canonicalize,
   createSessionSigner,
   hashPlan,
+  isP256PublicJwk,
   proposalScope,
   validateApprovalEnvelope,
   validateApprovalForBatch,
@@ -25,6 +26,16 @@ const proposal = (overrides: Partial<ProviderProposal> = {}): ProviderProposal =
   stateVersion: 7,
   createdAt: "2026-08-28T10:00:00.000Z",
   expiresAt: "2099-08-28T10:05:00.000Z",
+  ...overrides,
+});
+
+const southProposal = (overrides: Partial<ProviderProposal> = {}) => proposal({
+  proposalId: "b",
+  resourceId: "south",
+  resourceLabel: "South Shelter",
+  quantity: 24,
+  unitCost: 9,
+  totalCost: 216,
   ...overrides,
 });
 
@@ -63,6 +74,10 @@ describe("PACT canonical scope", () => {
 
   it("rejects unsupported canonical values instead of signing ambiguous data", () => {
     expect(() => canonicalize({ value: Number.NaN })).toThrow(/non-finite/);
+    expect(() => canonicalize(new Date())).toThrow(/plain objects/);
+    const sparse = new Array(2);
+    sparse[1] = "value";
+    expect(() => canonicalize(sparse)).toThrow(/sparse/);
     const cyclic: Record<string, unknown> = {};
     cyclic.self = cyclic;
     expect(() => canonicalize(cyclic)).toThrow(/cycles/);
@@ -70,8 +85,17 @@ describe("PACT canonical scope", () => {
 
   it("hashes the same plan independent of proposal ordering", async () => {
     const a = proposal({ proposalId: "a" });
-    const b = proposal({ proposalId: "b", resourceId: "south", resourceLabel: "South Shelter", totalCost: 216 });
+    const b = southProposal();
     expect(await hashPlan(plan([a, b]))).toBe(await hashPlan(plan([b, a])));
+  });
+
+  it("binds the human-visible summary rationale and revision", async () => {
+    const base = plan([proposal()]);
+    const baseHash = await hashPlan(base);
+
+    expect(await hashPlan({ ...base, summary: "Changed summary" })).not.toBe(baseHash);
+    expect(await hashPlan({ ...base, rationale: "Changed rationale" })).not.toBe(baseHash);
+    expect(await hashPlan({ ...base, revision: 2 })).not.toBe(baseHash);
   });
 });
 
@@ -80,6 +104,7 @@ describe("PACT approval token", () => {
     const item = proposal();
     const { signer, token } = await signedToken([item]);
 
+    expect(isP256PublicJwk(signer.publicKeyJwk)).toBe(true);
     expect(await verifyApprovalToken(token, signer.publicKeyJwk)).toBe(true);
     expect(validateApprovalForProposal(token, item, signer.sessionId)).toEqual({ ok: true });
   });
@@ -92,13 +117,14 @@ describe("PACT approval token", () => {
     expect(await verifyApprovalToken(tampered, signer.publicKeyJwk)).toBe(false);
   });
 
-  it("rejects malformed token input without throwing", async () => {
-    const { signer } = await signedToken([proposal()]);
+  it("rejects malformed token and key input without throwing", async () => {
+    const { signer, token } = await signedToken([proposal()]);
     expect(await verifyApprovalToken(null, signer.publicKeyJwk)).toBe(false);
     expect(validateApprovalEnvelope({ nope: true }, signer.sessionId)).toMatchObject({ ok: false, code: "MALFORMED_APPROVAL" });
+    expect(await verifyApprovalToken(token, { ...signer.publicKeyJwk, d: "private-material" })).toBe(false);
   });
 
-  it("rejects session replay, stale state and cost escalation", async () => {
+  it("rejects session replay stale state and cost escalation", async () => {
     const item = proposal();
     const { signer, token } = await signedToken([item], 3000, "session-bound");
 
@@ -107,7 +133,7 @@ describe("PACT approval token", () => {
     expect(validateApprovalForProposal(token, { ...item, totalCost: 181 }, signer.sessionId)).toMatchObject({ ok: false, code: "COST_SCOPE_MISMATCH" });
   });
 
-  it("binds the full operation, not only proposal ID and price", async () => {
+  it("binds the full operation not only proposal ID and price", async () => {
     const item = proposal();
     const { signer, token } = await signedToken([item]);
 
@@ -117,9 +143,24 @@ describe("PACT approval token", () => {
       .toMatchObject({ ok: false, code: "OPERATION_SCOPE_MISMATCH" });
   });
 
+  it("rejects inconsistent scope arithmetic before signature authority is used", async () => {
+    const item = proposal();
+    const { signer, token } = await signedToken([item]);
+    const inconsistent = {
+      ...token,
+      payload: {
+        ...token.payload,
+        scopes: token.payload.scopes.map((scope) => ({ ...scope, maxCost: scope.maxCost + 1 })),
+      },
+    };
+    const resigned = await signer.sign(inconsistent.payload);
+
+    expect(validateApprovalEnvelope(resigned, signer.sessionId)).toMatchObject({ ok: false, code: "SCOPE_COST_INCONSISTENT" });
+  });
+
   it("rejects a signed scope set whose aggregate exceeds the human ceiling", async () => {
-    const a = proposal({ proposalId: "a", totalCost: 180 });
-    const b = proposal({ proposalId: "b", resourceId: "south", resourceLabel: "South Shelter", totalCost: 216 });
+    const a = proposal({ proposalId: "a" });
+    const b = southProposal();
     const { signer, token } = await signedToken([a, b], 300);
 
     expect(validateApprovalEnvelope(token, signer.sessionId)).toMatchObject({ ok: false, code: "AGGREGATE_COST_EXCEEDED" });
@@ -127,7 +168,7 @@ describe("PACT approval token", () => {
 
   it("requires the complete approved same-origin batch", async () => {
     const a = proposal({ proposalId: "a" });
-    const b = proposal({ proposalId: "b", resourceId: "south", resourceLabel: "South Shelter", totalCost: 216 });
+    const b = southProposal();
     const { signer, token } = await signedToken([a, b]);
 
     expect(validateApprovalForBatch(token, [a], signer.sessionId, "shelter", a.providerOrigin))
