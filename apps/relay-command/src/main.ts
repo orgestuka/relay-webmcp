@@ -11,7 +11,7 @@ import type {
   ProviderToRelayMessage,
 } from "@relay/contracts";
 import { createSessionSigner, hashPlan, proposalScope, type SessionSigner } from "@relay/pact";
-import { incident } from "@relay/simulation";
+import { incident, validateEvacuationPlan } from "@relay/simulation";
 import { DynamicTool, registerTool, toolOutput, webMcpAvailable } from "@relay/webmcp-runtime";
 
 const origins: Record<ProviderId, string> = {
@@ -228,6 +228,17 @@ async function stagePlan(input: { summary: string; rationale: string; proposalId
     return toolOutput({ ok: false, code: "BUDGET_EXCEEDED", planId: currentPlan.planId, totalCost: currentPlan.totalCost, maxBudget });
   }
 
+  const policy = validateEvacuationPlan(proposals, [...providerStates.values()], maxBudget);
+  if (!policy.ok) {
+    currentPlan.status = "DRAFT";
+    planStatus = "DRAFT";
+    approvalTool.disable();
+    const failedChecks = policy.checks.filter((check) => !check.pass);
+    logEvent("policy", `Plan rejected by ${failedChecks.length} deterministic constraint check${failedChecks.length === 1 ? "" : "s"}.`);
+    render();
+    return toolOutput({ ok: false, code: "POLICY_VIOLATION", planId: currentPlan.planId, failedChecks, checks: policy.checks });
+  }
+
   planStatus = "VALIDATED";
   await approvalTool.enable();
   logEvent("plan", `Plan ${shortId(currentPlan.planId)} validated across ${proposals.length} scoped proposals. Approval tool is now available.`);
@@ -425,6 +436,7 @@ function renderPlan(plan: PlanDraft, stale: string[]) {
       <div class="proposal-row proposal-head"><span>Origin</span><span>Operation</span><span>Version</span><span>Cost</span></div>
       ${plan.proposals.map((proposal) => `<div class="proposal-row"><span><b>${labelForProvider(proposal.providerId)}</b><small>${proposal.providerOrigin}</small></span><span>${proposal.quantity} ${proposal.unit} · ${proposal.resourceLabel}<small>${proposal.purpose}</small></span><span>v${proposal.stateVersion}</span><span>${money(proposal.totalCost)}</span></div>`).join("")}
     </div>
+    ${renderPolicyChecks(plan)}
     <div class="amendment-row"><div><span>HUMAN AMENDMENT</span><strong>Tighten the maximum authority before consent</strong></div><div class="amendment-control"><span>€</span><input id="authority-cap" type="number" min="${Math.ceil(plan.totalCost)}" max="${incident.maximumBudget}" value="${Math.floor(plan.maxBudget)}"><button id="apply-amendment">Apply</button></div></div>
     <div class="protocol-state">
       ${protocolStep("PROPOSE", true, `${plan.proposals.length} provider quotes`)}
@@ -434,6 +446,11 @@ function renderPlan(plan: PlanDraft, stale: string[]) {
     </div>
     <button id="reset-plan" class="ghost-button">Clear staged plan</button>
   </div>`;
+}
+
+function renderPolicyChecks(plan: PlanDraft) {
+  const policy = validateEvacuationPlan(plan.proposals, [...providerStates.values()], plan.maxBudget);
+  return `<div class="policy-grid">${policy.checks.map((check) => `<div class="policy-check ${check.pass ? "pass" : "fail"}"><span>${check.pass ? "✓" : "×"}</span><div><b>${check.label}</b><small>${check.actual} ${check.relation} ${check.required}</small></div></div>`).join("")}</div>`;
 }
 
 function protocolStep(label: string, active: boolean, detail: string) {
@@ -458,7 +475,7 @@ function renderApprovalModal() {
       <h2 id="approval-title">Approve exact transaction?</h2>
       <p>The agent is paused. Approving signs only these proposal IDs, provider versions and cost ceilings for two minutes.</p>
       <div class="approval-hash"><span>PLAN HASH</span><code>${pendingApproval.payload.planHash}</code></div>
-      <div class="approval-lines">${currentPlan.proposals.map((p) => `<div><span>${labelForProvider(p.providerId)} · ${p.resourceLabel}</span><b>${p.quantity} ${p.unit} · ${money(p.totalCost)}</b><small>${shortId(p.proposalId)} · state v${p.stateVersion}</small></div>`).join("")}</div>
+      <div class="approval-lines">${currentPlan.proposals.map((p) => `<div><span>${labelForProvider(p.providerId)} · ${p.resourceLabel}</span><b>${p.quantity} ${p.unit} · ${money(p.totalCost)}</b><small>${p.providerOrigin} · ${shortId(p.proposalId)} · state v${p.stateVersion}</small></div>`).join("")}</div>
       <div class="approval-total"><span>Maximum authority</span><strong>${money(pendingApproval.payload.maximumCost)}</strong></div>
       <div class="approval-actions"><button id="reject-plan" class="reject-button">Reject</button><button id="approve-plan" class="approve-button">Approve & sign PACT token</button></div>
       <small class="approval-footnote">No provider capacity changes until the agent presents this signed token back to each scoped origin.</small>
@@ -488,7 +505,7 @@ async function registerRelayTools() {
   await registerTool({
     name: "relay_stage_plan",
     title: "Stage a federated plan",
-    description: "Stage exact non-binding provider proposal IDs as one Relay transaction. Validates live provider versions and budget, then unlocks human approval.",
+    description: "Stage exact non-binding provider proposal IDs as one Relay transaction. Validates live provider versions, deterministic incident constraints and budget, then unlocks human approval.",
     inputSchema: {
       type: "object",
       properties: {
@@ -509,7 +526,7 @@ async function registerRelayTools() {
     description: "Return the exact staged proposal scopes, current status and stale-state reasons without changing anything.",
     inputSchema: { type: "object", properties: {} },
     annotations: { readOnlyHint: true, untrustedContentHint: false },
-    execute: () => toolOutput(currentPlan ? { plan: currentPlan, staleReasons: staleReasons(currentPlan), receipts: [...receipts.values()] } : { plan: null }),
+    execute: () => toolOutput(currentPlan ? { plan: currentPlan, staleReasons: staleReasons(currentPlan), policy: validateEvacuationPlan(currentPlan.proposals, [...providerStates.values()], currentPlan.maxBudget), receipts: [...receipts.values()] } : { plan: null }),
   });
 }
 
