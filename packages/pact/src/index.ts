@@ -3,20 +3,41 @@ import type {
   ApprovalToken,
   PlanDraft,
   ProposalScope,
+  ProviderId,
   ProviderProposal,
 } from "@relay/contracts";
 
 const encoder = new TextEncoder();
+const MAX_APPROVAL_LIFETIME_MS = 10 * 60_000;
+const CLOCK_SKEW_MS = 30_000;
 
-export function canonicalize(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
+type ValidationResult = { ok: true } | { ok: false; code: string; message: string };
 
-  const record = value as Record<string, unknown>;
-  return `{${Object.keys(record)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonicalize(record[key])}`)
-    .join(",")}}`;
+function fail(code: string, message: string): ValidationResult {
+  return { ok: false, code, message };
+}
+
+export function canonicalize(value: unknown, seen = new Set<object>()): string {
+  if (value === null) return "null";
+  if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new TypeError("PACT canonical data cannot contain non-finite numbers.");
+    return JSON.stringify(value);
+  }
+  if (typeof value !== "object") throw new TypeError(`PACT canonical data cannot contain ${typeof value}.`);
+  if (seen.has(value)) throw new TypeError("PACT canonical data cannot contain cycles.");
+
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) return `[${value.map((item) => canonicalize(item, seen)).join(",")}]`;
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalize(record[key], seen)}`)
+      .join(",")}}`;
+  } finally {
+    seen.delete(value);
+  }
 }
 
 function base64Url(bytes: ArrayBuffer): string {
@@ -30,6 +51,35 @@ function fromBase64Url(value: string): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(raw, (char) => char.charCodeAt(0));
 }
 
+function cents(value: number): number | null {
+  if (!Number.isFinite(value) || value < 0) return null;
+  return Math.round(value * 100);
+}
+
+function sameMoney(left: number, right: number): boolean {
+  const leftCents = cents(left);
+  const rightCents = cents(right);
+  return leftCents !== null && rightCents !== null && leftCents === rightCents;
+}
+
+function validOrigin(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.origin === value && (url.protocol === "https:" || url.hostname === "localhost" || url.hostname === "127.0.0.1");
+  } catch {
+    return false;
+  }
+}
+
+function isApprovalToken(value: unknown): value is ApprovalToken {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<ApprovalToken>;
+  return candidate.algorithm === "ECDSA_P256_SHA256"
+    && typeof candidate.signature === "string"
+    && Boolean(candidate.payload)
+    && typeof candidate.payload === "object";
+}
+
 export async function sha256(value: unknown): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", encoder.encode(canonicalize(value)));
   return base64Url(digest);
@@ -40,7 +90,14 @@ export function proposalScope(proposal: ProviderProposal): ProposalScope {
     proposalId: proposal.proposalId,
     providerId: proposal.providerId,
     providerOrigin: proposal.providerOrigin,
+    resourceId: proposal.resourceId,
+    resourceLabel: proposal.resourceLabel,
+    quantity: proposal.quantity,
+    unit: proposal.unit,
+    unitCost: proposal.unitCost,
+    purpose: proposal.purpose,
     stateVersion: proposal.stateVersion,
+    expiresAt: proposal.expiresAt,
     maxCost: proposal.totalCost,
   };
 }
@@ -60,13 +117,12 @@ export interface SessionSigner {
   sign: (payload: ApprovalPayload) => Promise<ApprovalToken>;
 }
 
-export async function createSessionSigner(sessionId = crypto.randomUUID()): Promise<SessionSigner> {
+export async function createSessionSigner(sessionId: string = crypto.randomUUID()): Promise<SessionSigner> {
   const pair = (await crypto.subtle.generateKey(
     { name: "ECDSA", namedCurve: "P-256" },
     true,
     ["sign", "verify"],
   )) as CryptoKeyPair;
-
   const publicKeyJwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
 
   return {
@@ -83,49 +139,136 @@ export async function createSessionSigner(sessionId = crypto.randomUUID()): Prom
   };
 }
 
-export async function verifyApprovalToken(token: ApprovalToken, publicKeyJwk: JsonWebKey): Promise<boolean> {
-  if (token.algorithm !== "ECDSA_P256_SHA256") return false;
-  const key = await crypto.subtle.importKey(
-    "jwk",
-    publicKeyJwk,
-    { name: "ECDSA", namedCurve: "P-256" },
-    false,
-    ["verify"],
-  );
-
-  return crypto.subtle.verify(
-    { name: "ECDSA", hash: "SHA-256" },
-    key,
-    fromBase64Url(token.signature),
-    encoder.encode(canonicalize(token.payload)),
-  );
+export async function verifyApprovalToken(token: unknown, publicKeyJwk: JsonWebKey): Promise<boolean> {
+  if (!isApprovalToken(token)) return false;
+  try {
+    const key = await crypto.subtle.importKey(
+      "jwk",
+      publicKeyJwk,
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["verify"],
+    );
+    return await crypto.subtle.verify(
+      { name: "ECDSA", hash: "SHA-256" },
+      key,
+      fromBase64Url(token.signature),
+      encoder.encode(canonicalize(token.payload)),
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function isExpired(iso: string, now = Date.now()): boolean {
-  return Date.parse(iso) <= now;
+  const timestamp = Date.parse(iso);
+  return !Number.isFinite(timestamp) || timestamp <= now;
+}
+
+export function validateApprovalEnvelope(
+  token: unknown,
+  expectedSessionId: string,
+  now = Date.now(),
+): ValidationResult {
+  if (!isApprovalToken(token)) return fail("MALFORMED_APPROVAL", "Approval token shape is invalid.");
+  const payload = token.payload;
+  if (payload.sessionId !== expectedSessionId) return fail("SESSION_MISMATCH", "Approval belongs to another Relay session.");
+  if (!Array.isArray(payload.scopes) || payload.scopes.length === 0) return fail("EMPTY_SCOPE", "Approval contains no proposal scopes.");
+  if (typeof payload.planId !== "string" || !payload.planId || typeof payload.planHash !== "string" || !payload.planHash) {
+    return fail("MALFORMED_APPROVAL", "Approval is missing its plan identity.");
+  }
+
+  const issuedAt = Date.parse(payload.issuedAt);
+  const expiresAt = Date.parse(payload.expiresAt);
+  if (!Number.isFinite(issuedAt) || !Number.isFinite(expiresAt)) return fail("MALFORMED_TIME", "Approval timestamps are invalid.");
+  if (issuedAt > now + CLOCK_SKEW_MS) return fail("APPROVAL_NOT_YET_VALID", "Approval issue time is in the future.");
+  if (expiresAt <= now) return fail("APPROVAL_EXPIRED", "Human approval has expired.");
+  if (expiresAt <= issuedAt || expiresAt - issuedAt > MAX_APPROVAL_LIFETIME_MS) {
+    return fail("INVALID_APPROVAL_LIFETIME", "Approval lifetime exceeds the allowed window.");
+  }
+
+  const maximumCost = cents(payload.maximumCost);
+  if (maximumCost === null) return fail("INVALID_COST_CEILING", "Approval cost ceiling is invalid.");
+
+  const seen = new Set<string>();
+  let aggregateCost = 0;
+  for (const scope of payload.scopes) {
+    if (!scope || typeof scope !== "object" || typeof scope.proposalId !== "string" || !scope.proposalId) {
+      return fail("MALFORMED_SCOPE", "Approval contains a malformed proposal scope.");
+    }
+    if (seen.has(scope.proposalId)) return fail("DUPLICATE_SCOPE", "Approval repeats a proposal scope.");
+    seen.add(scope.proposalId);
+    if (!validOrigin(scope.providerOrigin)) return fail("INVALID_PROVIDER_ORIGIN", "Approval contains an invalid provider origin.");
+    if (!Number.isInteger(scope.stateVersion) || scope.stateVersion < 1 || !Number.isInteger(scope.quantity) || scope.quantity < 1) {
+      return fail("MALFORMED_SCOPE", "Approval scope has invalid quantity or state version.");
+    }
+    const scopeCost = cents(scope.maxCost);
+    if (scopeCost === null) return fail("MALFORMED_SCOPE", "Approval scope has an invalid cost.");
+    aggregateCost += scopeCost;
+  }
+  if (aggregateCost > maximumCost) {
+    return fail("AGGREGATE_COST_EXCEEDED", "The sum of all approved proposal scopes exceeds the human cost ceiling.");
+  }
+  return { ok: true };
 }
 
 export function validateApprovalForProposal(
-  token: ApprovalToken,
+  token: unknown,
   proposal: ProviderProposal,
   expectedSessionId: string,
-): { ok: true } | { ok: false; code: string; message: string } {
-  if (token.payload.sessionId !== expectedSessionId) {
-    return { ok: false, code: "SESSION_MISMATCH", message: "Approval belongs to another Relay session." };
-  }
-  if (isExpired(token.payload.expiresAt)) {
-    return { ok: false, code: "APPROVAL_EXPIRED", message: "Human approval has expired." };
-  }
-  const scope = token.payload.scopes.find((candidate) => candidate.proposalId === proposal.proposalId);
-  if (!scope) return { ok: false, code: "OUT_OF_SCOPE", message: "Proposal is not covered by human approval." };
+  now = Date.now(),
+): ValidationResult {
+  const envelope = validateApprovalEnvelope(token, expectedSessionId, now);
+  if (!envelope.ok) return envelope;
+  const approval = token as ApprovalToken;
+  const scope = approval.payload.scopes.find((candidate) => candidate.proposalId === proposal.proposalId);
+  if (!scope) return fail("OUT_OF_SCOPE", "Proposal is not covered by human approval.");
   if (scope.providerId !== proposal.providerId || scope.providerOrigin !== proposal.providerOrigin) {
-    return { ok: false, code: "ORIGIN_SCOPE_MISMATCH", message: "Provider identity does not match approval scope." };
+    return fail("ORIGIN_SCOPE_MISMATCH", "Provider identity does not match approval scope.");
   }
-  if (scope.stateVersion !== proposal.stateVersion) {
-    return { ok: false, code: "VERSION_SCOPE_MISMATCH", message: "Approved provider version differs from proposal." };
+  if (scope.stateVersion !== proposal.stateVersion) return fail("VERSION_SCOPE_MISMATCH", "Approved provider version differs from proposal.");
+  if (
+    scope.resourceId !== proposal.resourceId
+    || scope.resourceLabel !== proposal.resourceLabel
+    || scope.quantity !== proposal.quantity
+    || scope.unit !== proposal.unit
+    || !sameMoney(scope.unitCost, proposal.unitCost)
+    || scope.purpose !== proposal.purpose
+    || scope.expiresAt !== proposal.expiresAt
+  ) {
+    return fail("OPERATION_SCOPE_MISMATCH", "Proposal operation differs from the exact human-approved scope.");
   }
-  if (proposal.totalCost > scope.maxCost || proposal.totalCost > token.payload.maximumCost) {
-    return { ok: false, code: "COST_SCOPE_EXCEEDED", message: "Proposal exceeds the human-approved cost ceiling." };
+  if (!sameMoney(scope.maxCost, proposal.totalCost)) return fail("COST_SCOPE_MISMATCH", "Proposal cost differs from the exact human-approved scope.");
+  return { ok: true };
+}
+
+export function validateApprovalForBatch(
+  token: unknown,
+  proposals: ProviderProposal[],
+  expectedSessionId: string,
+  providerId: ProviderId,
+  providerOrigin: string,
+  now = Date.now(),
+): ValidationResult {
+  const envelope = validateApprovalEnvelope(token, expectedSessionId, now);
+  if (!envelope.ok) return envelope;
+  if (proposals.length === 0) return fail("NO_PROPOSALS", "No proposals were supplied for commit.");
+  const approval = token as ApprovalToken;
+  const approvedIds = approval.payload.scopes
+    .filter((scope) => scope.providerId === providerId && scope.providerOrigin === providerOrigin)
+    .map((scope) => scope.proposalId)
+    .sort();
+  const requestedIds = [...new Set(proposals.map((proposal) => proposal.proposalId))].sort();
+  if (requestedIds.length !== proposals.length) return fail("DUPLICATE_PROPOSAL", "Commit batch repeats a proposal ID.");
+  if (approvedIds.length !== requestedIds.length || approvedIds.some((id, index) => id !== requestedIds[index])) {
+    return fail("INCOMPLETE_PROVIDER_BATCH", "Commit must include every human-approved proposal for this provider exactly once.");
+  }
+  for (const proposal of proposals) {
+    if (proposal.providerId !== providerId || proposal.providerOrigin !== providerOrigin) {
+      return fail("PROVIDER_BATCH_MISMATCH", "Commit batch contains a proposal from another provider origin.");
+    }
+    const proposalCheck = validateApprovalForProposal(approval, proposal, expectedSessionId, now);
+    if (!proposalCheck.ok) return proposalCheck;
   }
   return { ok: true };
 }

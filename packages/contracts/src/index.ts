@@ -48,7 +48,14 @@ export interface ProposalScope {
   proposalId: string;
   providerId: ProviderId;
   providerOrigin: string;
+  resourceId: string;
+  resourceLabel: string;
+  quantity: number;
+  unit: string;
+  unitCost: number;
+  purpose: string;
   stateVersion: number;
+  expiresAt: string;
   maxCost: number;
 }
 

@@ -1,14 +1,13 @@
 import type {
   ApprovalToken,
   CommitReceipt,
-  ProviderId,
   ProviderProposal,
   ProviderStateSnapshot,
   ProviderToRelayMessage,
   RelaySessionInitMessage,
   ResourceRecord,
 } from "@relay/contracts";
-import { isExpired, validateApprovalForProposal, verifyApprovalToken } from "@relay/pact";
+import { isExpired, validateApprovalForBatch, verifyApprovalToken } from "@relay/pact";
 import type { ProviderSeed } from "@relay/simulation";
 import { DynamicTool, registerTool, toolOutput, webMcpAvailable } from "@relay/webmcp-runtime";
 
@@ -29,8 +28,34 @@ interface SessionTrust {
 
 const PROPOSAL_TTL_MS = 5 * 60_000;
 
+function normalizeOrigin(value: string): string {
+  const url = new URL(value, window.location.href);
+  return url.origin;
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function isRelaySessionInit(value: unknown): value is RelaySessionInitMessage {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<RelaySessionInitMessage>;
+  return candidate.type === "relay_session_init"
+    && typeof candidate.sessionId === "string"
+    && candidate.sessionId.length > 0
+    && typeof candidate.commandOrigin === "string"
+    && Boolean(candidate.publicKeyJwk)
+    && typeof candidate.publicKeyJwk === "object";
+}
+
 export async function mountProvider(options: ProviderRuntimeOptions): Promise<void> {
-  const { seed, relayOrigin } = options;
+  const { seed } = options;
+  const relayOrigin = normalizeOrigin(options.relayOrigin);
   let stateVersion = 1;
   let resources = structuredClone(seed.resources);
   let trust: SessionTrust | null = null;
@@ -62,9 +87,9 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
       <main class="provider-shell">
         <header class="provider-header">
           <div>
-            <div class="eyebrow">FEDERATED PROVIDER · ${seed.providerId.toUpperCase()}</div>
-            <h1>${seed.providerName}</h1>
-            <p>${seed.description}</p>
+            <div class="eyebrow">FEDERATED PROVIDER · ${escapeHtml(seed.providerId.toUpperCase())}</div>
+            <h1>${escapeHtml(seed.providerName)}</h1>
+            <p>${escapeHtml(seed.description)}</p>
           </div>
           <div class="status-stack">
             <span class="status ${webMcpAvailable() ? "status-live" : "status-warn"}">${mcpState}</span>
@@ -77,18 +102,9 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
         </section>
 
         <section class="provider-footer">
-          <div>
-            <strong>${proposals.size}</strong>
-            <span>proposals</span>
-          </div>
-          <div>
-            <strong>${validProposalCount()}</strong>
-            <span>committable</span>
-          </div>
-          <div>
-            <strong>${receipts.length}</strong>
-            <span>receipts</span>
-          </div>
+          <div><strong>${proposals.size}</strong><span>proposals</span></div>
+          <div><strong>${validProposalCount()}</strong><span>committable</span></div>
+          <div><strong>${receipts.length}</strong><span>receipts</span></div>
           <button id="inject-disruption" class="danger-button">Inject disruption</button>
         </section>
       </main>`;
@@ -105,23 +121,46 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
     {
       name: options.commitToolName,
       title: `Commit ${seed.providerName} reservations`,
-      description: "Atomically commit one or more proposals from this provider. Requires a valid human-signed Relay approval token and unchanged provider state.",
+      description: "Atomically commit every human-approved proposal for this provider. Fails closed on malformed tokens, missing scopes, stale state, replayed IDs or changed capacity.",
       inputSchema: {
         type: "object",
         properties: {
-          proposalIds: { type: "array", items: { type: "string" }, minItems: 1, description: "Exact proposal IDs from this provider to commit atomically." },
+          proposalIds: { type: "array", items: { type: "string" }, minItems: 1, description: "Every proposal ID approved for this provider, exactly once." },
           approvalToken: { type: "object", description: "Human-approved PACT token returned by relay_request_approval." },
         },
         required: ["proposalIds", "approvalToken"],
+        additionalProperties: false,
       },
       annotations: { readOnlyHint: false, untrustedContentHint: false },
       execute: async (input: { proposalIds: string[]; approvalToken: ApprovalToken }) => {
-        const requestedIds = [...new Set(input.proposalIds)];
-        if (requestedIds.length === 0) return toolOutput({ ok: false, code: "NO_PROPOSALS" });
-        const batch = requestedIds.map((id) => proposals.get(id));
-        if (batch.some((proposal) => !proposal)) return toolOutput({ ok: false, code: "PROPOSAL_NOT_FOUND", message: "At least one proposal ID is unknown to this provider." });
-        const scoped = batch as ProviderProposal[];
+        if (!input || !Array.isArray(input.proposalIds) || !input.approvalToken || typeof input.approvalToken !== "object") {
+          return toolOutput({ ok: false, code: "INVALID_INPUT", message: "proposalIds and approvalToken are required." });
+        }
         if (!trust) return toolOutput({ ok: false, code: "NO_RELAY_SESSION", message: "Provider has not established Relay session trust." });
+
+        const requestedIds = input.proposalIds.filter((id): id is string => typeof id === "string" && id.length > 0);
+        if (requestedIds.length !== input.proposalIds.length || requestedIds.length === 0) {
+          return toolOutput({ ok: false, code: "INVALID_PROPOSAL_IDS" });
+        }
+        if (new Set(requestedIds).size !== requestedIds.length) return toolOutput({ ok: false, code: "DUPLICATE_PROPOSAL" });
+
+        const batch = requestedIds.map((id) => proposals.get(id));
+        if (batch.some((proposal) => !proposal)) {
+          return toolOutput({ ok: false, code: "PROPOSAL_NOT_FOUND", message: "At least one proposal ID is unknown, expired or already committed." });
+        }
+        const scoped = batch as ProviderProposal[];
+
+        const signatureValid = await verifyApprovalToken(input.approvalToken, trust.publicKeyJwk);
+        if (!signatureValid) return toolOutput({ ok: false, code: "INVALID_SIGNATURE", message: "Approval signature did not verify against the trusted Relay session key." });
+
+        const authorization = validateApprovalForBatch(
+          input.approvalToken,
+          scoped,
+          trust.sessionId,
+          seed.providerId,
+          window.location.origin,
+        );
+        if (!authorization.ok) return toolOutput(authorization);
 
         if (scoped.some((proposal) => proposal.stateVersion !== stateVersion)) {
           await syncCommitTool();
@@ -132,13 +171,6 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
           await syncCommitTool();
           return toolOutput({ ok: false, code: "PROPOSAL_EXPIRED" });
         }
-
-        for (const proposal of scoped) {
-          const scopeCheck = validateApprovalForProposal(input.approvalToken, proposal, trust.sessionId);
-          if (!scopeCheck.ok) return toolOutput(scopeCheck);
-        }
-        const signatureValid = await verifyApprovalToken(input.approvalToken, trust.publicKeyJwk);
-        if (!signatureValid) return toolOutput({ ok: false, code: "INVALID_SIGNATURE", message: "Approval signature did not verify against the trusted Relay session key." });
 
         const demand = new Map<string, number>();
         for (const proposal of scoped) demand.set(proposal.resourceId, (demand.get(proposal.resourceId) ?? 0) + proposal.quantity);
@@ -177,8 +209,9 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
     },
     [relayOrigin],
   );
+
   const syncCommitTool = async () => {
-    if (validProposalCount() > 0) await commitTool.enable();
+    if (trust && validProposalCount() > 0) await commitTool.enable();
     else commitTool.disable();
   };
 
@@ -202,17 +235,18 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
           minimum: { type: "number", minimum: 0, description: "Minimum availability required. Use 0 to return all resources." },
           requiredTag: { type: "string", description: "Optional capability tag such as accessible, medical, or wheelchair." },
         },
+        additionalProperties: false,
       },
       annotations: { readOnlyHint: true, untrustedContentHint: false },
       execute: async (input: { minimum?: number; requiredTag?: string }) => {
-        const minimum = Math.max(0, input.minimum ?? 0);
-        const requiredTag = input.requiredTag?.toLowerCase();
+        const minimum = typeof input?.minimum === "number" && Number.isFinite(input.minimum) ? Math.max(0, input.minimum) : 0;
+        const requiredTag = typeof input?.requiredTag === "string" ? input.requiredTag.trim().toLowerCase().slice(0, 40) : undefined;
         const matches = resources.filter((resource) => {
           const amountOk = resource.available >= minimum;
           const tagOk = !requiredTag || resource.tags?.some((tag) => tag.toLowerCase().includes(requiredTag));
           return amountOk && tagOk;
         });
-        return toolOutput({ provider: seed.providerName, stateVersion, resources: matches });
+        return toolOutput({ provider: seed.providerName, providerOrigin: window.location.origin, stateVersion, resources: matches });
       },
     },
     { exposedTo: [relayOrigin] },
@@ -227,19 +261,26 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
         type: "object",
         properties: {
           resourceId: { type: "string", enum: resources.map((resource) => resource.id), description: "Resource ID from the provider search tool." },
-          quantity: { type: "number", minimum: 1, description: "Quantity to reserve." },
-          purpose: { type: "string", description: "Why this reservation is needed in the current plan." },
+          quantity: { type: "number", minimum: 1, description: "Whole-number quantity to reserve." },
+          purpose: { type: "string", minLength: 1, maxLength: 180, description: "Why this reservation is needed in the current plan." },
         },
         required: ["resourceId", "quantity", "purpose"],
+        additionalProperties: false,
       },
-      annotations: { readOnlyHint: false, untrustedContentHint: false },
+      annotations: { readOnlyHint: false, untrustedContentHint: true },
       execute: async (input: { resourceId: string; quantity: number; purpose: string }) => {
+        if (!input || typeof input.resourceId !== "string" || typeof input.quantity !== "number" || typeof input.purpose !== "string") {
+          return toolOutput({ ok: false, code: "INVALID_INPUT" });
+        }
         const resource = resources.find((candidate) => candidate.id === input.resourceId);
         const quantity = Math.floor(input.quantity);
+        const purpose = input.purpose.trim().slice(0, 180);
         if (!resource) return toolOutput({ ok: false, code: "RESOURCE_NOT_FOUND" });
-        if (quantity < 1 || quantity > resource.available) {
-          return toolOutput({ ok: false, code: "INSUFFICIENT_CAPACITY", available: resource.available, requested: quantity });
+        if (!Number.isFinite(input.quantity) || quantity !== input.quantity || quantity < 1 || quantity > resource.available) {
+          return toolOutput({ ok: false, code: "INSUFFICIENT_CAPACITY", available: resource.available, requested: input.quantity });
         }
+        if (!purpose) return toolOutput({ ok: false, code: "PURPOSE_REQUIRED" });
+
         const now = Date.now();
         const proposal: ProviderProposal = {
           proposalId: `${seed.providerId}-${crypto.randomUUID()}`,
@@ -251,7 +292,7 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
           unit: resource.unit,
           unitCost: resource.unitCost,
           totalCost: Number((quantity * resource.unitCost).toFixed(2)),
-          purpose: input.purpose.slice(0, 180),
+          purpose,
           stateVersion,
           createdAt: new Date(now).toISOString(),
           expiresAt: new Date(now + PROPOSAL_TTL_MS).toISOString(),
@@ -266,9 +307,14 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
     { exposedTo: [relayOrigin] },
   );
 
-  window.addEventListener("message", (event: MessageEvent<RelaySessionInitMessage>) => {
-    if (event.origin !== relayOrigin || event.data?.type !== "relay_session_init") return;
+  window.addEventListener("message", (event: MessageEvent<unknown>) => {
+    if (event.source !== window.parent || event.origin !== relayOrigin || !isRelaySessionInit(event.data)) return;
+    if (normalizeOrigin(event.data.commandOrigin) !== relayOrigin) return;
+
+    const sessionChanged = Boolean(trust?.sessionId && trust.sessionId !== event.data.sessionId);
     trust = { sessionId: event.data.sessionId, publicKeyJwk: event.data.publicKeyJwk };
+    if (sessionChanged) proposals.clear();
+    void syncCommitTool();
     render();
   });
 
@@ -279,9 +325,9 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
 
 function resourceCard(resource: ResourceRecord): string {
   return `<article class="resource-card">
-    <div class="resource-top"><span>${resource.label}</span><strong>${resource.available}</strong></div>
-    <div class="resource-unit">${resource.unit} available · €${resource.unitCost}/${resource.unit.replace(/s$/, "")}</div>
-    <p>${resource.detail ?? ""}</p>
-    <div class="tags">${(resource.tags ?? []).map((tag) => `<span>${tag}</span>`).join("")}</div>
+    <div class="resource-top"><span>${escapeHtml(resource.label)}</span><strong>${resource.available}</strong></div>
+    <div class="resource-unit">${escapeHtml(resource.unit)} available · €${resource.unitCost}/${escapeHtml(resource.unit.replace(/s$/, ""))}</div>
+    <p>${escapeHtml(resource.detail ?? "")}</p>
+    <div class="tags">${(resource.tags ?? []).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
   </article>`;
 }

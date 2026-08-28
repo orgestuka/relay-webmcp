@@ -5,6 +5,8 @@ import {
   createSessionSigner,
   hashPlan,
   proposalScope,
+  validateApprovalEnvelope,
+  validateApprovalForBatch,
   validateApprovalForProposal,
   verifyApprovalToken,
 } from "./index";
@@ -40,9 +42,30 @@ const plan = (proposals: ProviderProposal[]): PlanDraft => ({
   updatedAt: "2026-08-28T10:00:00.000Z",
 });
 
+async function signedToken(items: ProviderProposal[], maximumCost = 3000, sessionId = "session-good") {
+  const signer = await createSessionSigner(sessionId);
+  const payload: ApprovalPayload = {
+    sessionId: signer.sessionId,
+    planId: "plan-1",
+    planHash: await hashPlan(plan(items)),
+    scopes: items.map(proposalScope),
+    maximumCost,
+    issuedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 120_000).toISOString(),
+  };
+  return { signer, payload, token: await signer.sign(payload) };
+}
+
 describe("PACT canonical scope", () => {
   it("canonicalizes object keys deterministically", () => {
     expect(canonicalize({ z: 1, a: { d: 4, b: 2 } })).toBe(canonicalize({ a: { b: 2, d: 4 }, z: 1 }));
+  });
+
+  it("rejects unsupported canonical values instead of signing ambiguous data", () => {
+    expect(() => canonicalize({ value: Number.NaN })).toThrow(/non-finite/);
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    expect(() => canonicalize(cyclic)).toThrow(/cycles/);
   });
 
   it("hashes the same plan independent of proposal ordering", async () => {
@@ -54,57 +77,61 @@ describe("PACT canonical scope", () => {
 
 describe("PACT approval token", () => {
   it("verifies a human-session signature and exact proposal scope", async () => {
-    const signer = await createSessionSigner("session-good");
     const item = proposal();
-    const payload: ApprovalPayload = {
-      sessionId: signer.sessionId,
-      planId: "plan-1",
-      planHash: await hashPlan(plan([item])),
-      scopes: [proposalScope(item)],
-      maximumCost: 3000,
-      issuedAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 120_000).toISOString(),
-    };
-    const token = await signer.sign(payload);
+    const { signer, token } = await signedToken([item]);
 
     expect(await verifyApprovalToken(token, signer.publicKeyJwk)).toBe(true);
     expect(validateApprovalForProposal(token, item, signer.sessionId)).toEqual({ ok: true });
   });
 
   it("rejects a payload modified after the human signed it", async () => {
-    const signer = await createSessionSigner("session-tamper");
     const item = proposal();
-    const payload: ApprovalPayload = {
-      sessionId: signer.sessionId,
-      planId: "plan-1",
-      planHash: await hashPlan(plan([item])),
-      scopes: [proposalScope(item)],
-      maximumCost: 3000,
-      issuedAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 120_000).toISOString(),
-    };
-    const token = await signer.sign(payload);
+    const { signer, token } = await signedToken([item], 3000, "session-tamper");
     const tampered = { ...token, payload: { ...token.payload, maximumCost: 5000 } };
 
     expect(await verifyApprovalToken(tampered, signer.publicKeyJwk)).toBe(false);
   });
 
+  it("rejects malformed token input without throwing", async () => {
+    const { signer } = await signedToken([proposal()]);
+    expect(await verifyApprovalToken(null, signer.publicKeyJwk)).toBe(false);
+    expect(validateApprovalEnvelope({ nope: true }, signer.sessionId)).toMatchObject({ ok: false, code: "MALFORMED_APPROVAL" });
+  });
+
   it("rejects session replay, stale state and cost escalation", async () => {
-    const signer = await createSessionSigner("session-bound");
     const item = proposal();
-    const payload: ApprovalPayload = {
-      sessionId: signer.sessionId,
-      planId: "plan-1",
-      planHash: await hashPlan(plan([item])),
-      scopes: [proposalScope(item)],
-      maximumCost: 3000,
-      issuedAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 120_000).toISOString(),
-    };
-    const token = await signer.sign(payload);
+    const { signer, token } = await signedToken([item], 3000, "session-bound");
 
     expect(validateApprovalForProposal(token, item, "another-session")).toMatchObject({ ok: false, code: "SESSION_MISMATCH" });
     expect(validateApprovalForProposal(token, { ...item, stateVersion: 8 }, signer.sessionId)).toMatchObject({ ok: false, code: "VERSION_SCOPE_MISMATCH" });
-    expect(validateApprovalForProposal(token, { ...item, totalCost: 181 }, signer.sessionId)).toMatchObject({ ok: false, code: "COST_SCOPE_EXCEEDED" });
+    expect(validateApprovalForProposal(token, { ...item, totalCost: 181 }, signer.sessionId)).toMatchObject({ ok: false, code: "COST_SCOPE_MISMATCH" });
+  });
+
+  it("binds the full operation, not only proposal ID and price", async () => {
+    const item = proposal();
+    const { signer, token } = await signedToken([item]);
+
+    expect(validateApprovalForProposal(token, { ...item, resourceId: "south", resourceLabel: "South Shelter" }, signer.sessionId))
+      .toMatchObject({ ok: false, code: "OPERATION_SCOPE_MISMATCH" });
+    expect(validateApprovalForProposal(token, { ...item, purpose: "Different operation" }, signer.sessionId))
+      .toMatchObject({ ok: false, code: "OPERATION_SCOPE_MISMATCH" });
+  });
+
+  it("rejects a signed scope set whose aggregate exceeds the human ceiling", async () => {
+    const a = proposal({ proposalId: "a", totalCost: 180 });
+    const b = proposal({ proposalId: "b", resourceId: "south", resourceLabel: "South Shelter", totalCost: 216 });
+    const { signer, token } = await signedToken([a, b], 300);
+
+    expect(validateApprovalEnvelope(token, signer.sessionId)).toMatchObject({ ok: false, code: "AGGREGATE_COST_EXCEEDED" });
+  });
+
+  it("requires the complete approved same-origin batch", async () => {
+    const a = proposal({ proposalId: "a" });
+    const b = proposal({ proposalId: "b", resourceId: "south", resourceLabel: "South Shelter", totalCost: 216 });
+    const { signer, token } = await signedToken([a, b]);
+
+    expect(validateApprovalForBatch(token, [a], signer.sessionId, "shelter", a.providerOrigin))
+      .toMatchObject({ ok: false, code: "INCOMPLETE_PROVIDER_BATCH" });
+    expect(validateApprovalForBatch(token, [a, b], signer.sessionId, "shelter", a.providerOrigin)).toEqual({ ok: true });
   });
 });
