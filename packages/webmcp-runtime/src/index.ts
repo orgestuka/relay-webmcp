@@ -12,10 +12,17 @@ export interface ToolDefinition<TInput extends object = Record<string, unknown>>
   execute(input: TInput, options?: { signal?: AbortSignal }): Promise<unknown> | unknown;
 }
 
+export interface RegisteredTool {
+  name: string;
+  title?: string;
+  origin: string;
+  annotations?: ToolAnnotations;
+}
+
 interface ModelContextLike extends EventTarget {
   registerTool(tool: ToolDefinition, options?: { signal?: AbortSignal; exposedTo?: string[] }): Promise<void>;
-  getTools?(options?: { fromOrigins?: string[] }): Promise<unknown[]>;
-  executeTool?(tool: unknown, input?: string, options?: { signal?: AbortSignal }): Promise<string | null>;
+  getTools?(options?: { fromOrigins?: string[] }): Promise<RegisteredTool[]>;
+  executeTool?(tool: RegisteredTool, input?: string, options?: { signal?: AbortSignal }): Promise<string | null>;
 }
 
 declare global {
@@ -35,6 +42,11 @@ export function webMcpAvailable(): boolean {
   return Boolean(getModelContext()?.registerTool);
 }
 
+function deferredAbort(controller: AbortController | null): void {
+  if (!controller || controller.signal.aborted) return;
+  globalThis.setTimeout(() => controller.abort(), 0);
+}
+
 export async function registerTool<TInput extends object>(
   tool: ToolDefinition<TInput>,
   options: { exposedTo?: string[] } = {},
@@ -46,15 +58,23 @@ export async function registerTool<TInput extends object>(
   }
 
   const controller = new AbortController();
-  await context.registerTool(tool as ToolDefinition, {
-    signal: controller.signal,
-    exposedTo: options.exposedTo,
-  });
-  return controller;
+  try {
+    await context.registerTool(tool as ToolDefinition, {
+      signal: controller.signal,
+      exposedTo: options.exposedTo,
+    });
+    return controller;
+  } catch (error) {
+    controller.abort();
+    console.error(`[Relay] Failed to register WebMCP tool ${tool.name}`, error);
+    throw error;
+  }
 }
 
 export class DynamicTool {
   #controller: AbortController | null = null;
+  #pending: Promise<void> | null = null;
+  #generation = 0;
   #definition: ToolDefinition;
   #exposedTo?: string[];
 
@@ -69,24 +89,40 @@ export class DynamicTool {
 
   async enable(): Promise<void> {
     if (this.active) return;
-    this.#controller = await registerTool(this.#definition, { exposedTo: this.#exposedTo });
+    if (this.#pending) return this.#pending;
+
+    const generation = ++this.#generation;
+    const operation = (async () => {
+      const controller = await registerTool(this.#definition, { exposedTo: this.#exposedTo });
+      if (generation !== this.#generation) {
+        deferredAbort(controller);
+        return;
+      }
+      this.#controller = controller;
+    })();
+
+    this.#pending = operation;
+    try {
+      await operation;
+    } finally {
+      if (this.#pending === operation) this.#pending = null;
+    }
   }
 
   disable(): void {
+    this.#generation += 1;
     const controller = this.#controller;
     this.#controller = null;
-    if (!controller) return;
 
-    // Chrome versions before 153 can couple registration-signal abort with an
-    // in-flight execution. Defer unregistration to the next task so a tool can
-    // safely return its approval token / commit receipt before disappearing.
-    window.setTimeout(() => controller.abort(), 0);
+    // Some experimental browser builds couple registration-signal abort with
+    // an in-flight execution. Defer unregistration by one task so a tool can
+    // return its approval token or receipt before disappearing.
+    deferredAbort(controller);
   }
 }
 
 export function toolOutput(value: unknown): string {
-  // Never truncate serialized protocol objects. A cut JSON string can corrupt
-  // signatures, proposal IDs or receipts. Callers should return compact shapes
-  // intentionally when context size matters.
+  // Never truncate serialized protocol objects. Cut JSON can corrupt signed
+  // tokens, proposal IDs or receipts. Return intentionally compact objects.
   return JSON.stringify(value);
 }
