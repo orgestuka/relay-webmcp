@@ -7,9 +7,19 @@ import type {
   RelaySessionInitMessage,
   ResourceRecord,
 } from "@relay/contracts";
-import { isExpired, validateApprovalForBatch, verifyApprovalToken } from "@relay/pact";
+import {
+  isExpired,
+  isP256PublicJwk,
+  validateApprovalForBatch,
+  verifyApprovalToken,
+} from "@relay/pact";
 import type { ProviderSeed } from "@relay/simulation";
-import { DynamicTool, registerTool, toolOutput, webMcpAvailable } from "@relay/webmcp-runtime";
+import {
+  DynamicTool,
+  registerTool,
+  toolOutput,
+  webMcpAvailable,
+} from "@relay/webmcp-runtime";
 
 interface ProviderRuntimeOptions {
   seed: ProviderSeed;
@@ -24,12 +34,20 @@ interface ProviderRuntimeOptions {
 interface SessionTrust {
   sessionId: string;
   publicKeyJwk: JsonWebKey;
+  keyFingerprint: string;
 }
 
 const PROPOSAL_TTL_MS = 5 * 60_000;
+const MAX_OPEN_PROPOSALS = 100;
 
 function normalizeOrigin(value: string): string {
   const url = new URL(value, window.location.href);
+  const local = url.hostname === "localhost"
+    || url.hostname === "127.0.0.1"
+    || url.hostname === "[::1]";
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && local)) {
+    throw new Error(`Relay origin must use HTTPS outside local development: ${value}`);
+  }
   return url.origin;
 }
 
@@ -42,30 +60,62 @@ function escapeHtml(value: unknown): string {
     .replaceAll("'", "&#039;");
 }
 
-function isRelaySessionInit(value: unknown): value is RelaySessionInitMessage {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<RelaySessionInitMessage>;
-  return candidate.type === "relay_session_init"
-    && typeof candidate.sessionId === "string"
-    && candidate.sessionId.length > 0
-    && typeof candidate.commandOrigin === "string"
-    && Boolean(candidate.publicKeyJwk)
-    && typeof candidate.publicKeyJwk === "object";
+function cleanText(value: unknown, maximumLength: number): string | null {
+  if (typeof value !== "string") return null;
+  if (/[\u0000-\u001f\u007f]/.test(value)) return null;
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return null;
+  return normalized.slice(0, maximumLength);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function keyFingerprint(jwk: JsonWebKey): string {
+  return `${jwk.kty ?? ""}:${jwk.crv ?? ""}:${jwk.x ?? ""}:${jwk.y ?? ""}`;
+}
+
+function isRelaySessionInit(
+  value: unknown,
+  expectedCommandOrigin: string,
+): value is RelaySessionInitMessage {
+  if (!isRecord(value)) return false;
+  return value.type === "relay_session_init"
+    && cleanText(value.sessionId, 160) !== null
+    && value.commandOrigin === expectedCommandOrigin
+    && isP256PublicJwk(value.publicKeyJwk);
+}
+
+function validateSeed(seed: ProviderSeed): void {
+  if (!seed.resources.length) throw new Error(`${seed.providerName} has no resources.`);
+  const ids = new Set<string>();
+  for (const resource of seed.resources) {
+    if (!cleanText(resource.id, 80) || ids.has(resource.id)) throw new Error(`Invalid or duplicate resource ID: ${resource.id}`);
+    ids.add(resource.id);
+    if (!cleanText(resource.label, 120) || !cleanText(resource.unit, 80)) throw new Error(`Invalid resource metadata: ${resource.id}`);
+    if (!Number.isFinite(resource.available) || resource.available < 0 || !Number.isFinite(resource.unitCost) || resource.unitCost < 0) {
+      throw new Error(`Invalid resource amount or cost: ${resource.id}`);
+    }
+  }
 }
 
 export async function mountProvider(options: ProviderRuntimeOptions): Promise<void> {
   const { seed } = options;
+  validateSeed(seed);
   const relayOrigin = normalizeOrigin(options.relayOrigin);
   let stateVersion = 1;
-  let resources = structuredClone(seed.resources);
+  const resources = structuredClone(seed.resources);
   let trust: SessionTrust | null = null;
+  let expiryTimer: number | null = null;
+  let disruptionInjected = false;
   const proposals = new Map<string, ProviderProposal>();
   const receipts: CommitReceipt[] = [];
 
   const app = document.querySelector<HTMLDivElement>("#app");
   if (!app) throw new Error("Missing #app");
 
-  const post = (message: ProviderToRelayMessage) => {
+  const post = (message: ProviderToRelayMessage): void => {
     if (window.parent !== window) window.parent.postMessage(message, relayOrigin);
   };
 
@@ -78,11 +128,24 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
     resources: structuredClone(resources),
   });
 
-  const validProposalCount = () =>
-    [...proposals.values()].filter((proposal) => proposal.stateVersion === stateVersion && !isExpired(proposal.expiresAt)).length;
+  const pruneExpiredProposals = (now = Date.now()): boolean => {
+    let changed = false;
+    for (const [proposalId, proposal] of proposals) {
+      if (isExpired(proposal.expiresAt, now)) {
+        proposals.delete(proposalId);
+        changed = true;
+      }
+    }
+    return changed;
+  };
 
-  const render = () => {
+  const validProposalCount = (now = Date.now()): number =>
+    [...proposals.values()].filter((proposal) =>
+      proposal.stateVersion === stateVersion && !isExpired(proposal.expiresAt, now)).length;
+
+  const render = (): void => {
     const mcpState = webMcpAvailable() ? "WebMCP live" : "WebMCP unavailable";
+    const trustState = trust ? "signed Relay session" : "awaiting Relay trust";
     app.innerHTML = `
       <main class="provider-shell">
         <header class="provider-header">
@@ -93,6 +156,7 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
           </div>
           <div class="status-stack">
             <span class="status ${webMcpAvailable() ? "status-live" : "status-warn"}">${mcpState}</span>
+            <span class="status ${trust ? "status-live" : "status-warn"}">${trustState}</span>
             <span class="status">state v${stateVersion}</span>
           </div>
         </header>
@@ -102,50 +166,64 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
         </section>
 
         <section class="provider-footer">
-          <div><strong>${proposals.size}</strong><span>proposals</span></div>
+          <div><strong>${proposals.size}</strong><span>open proposals</span></div>
           <div><strong>${validProposalCount()}</strong><span>committable</span></div>
           <div><strong>${receipts.length}</strong><span>receipts</span></div>
-          <button id="inject-disruption" class="danger-button">Inject disruption</button>
+          <button id="inject-disruption" class="danger-button" ${disruptionInjected ? "disabled" : ""}>${disruptionInjected ? "Disruption injected" : "Inject disruption"}</button>
         </section>
       </main>`;
 
     app.querySelector<HTMLButtonElement>("#inject-disruption")?.addEventListener("click", injectDisruption);
   };
 
-  const broadcastState = () => {
+  const broadcastState = (): void => {
     post({ type: "relay_provider_state", snapshot: snapshot() });
     render();
   };
+
+  let syncCommitTool: () => Promise<void>;
 
   const commitTool = new DynamicTool(
     {
       name: options.commitToolName,
       title: `Commit ${seed.providerName} reservations`,
-      description: "Atomically commit every human-approved proposal for this provider. Fails closed on malformed tokens, missing scopes, stale state, replayed IDs or changed capacity.",
+      description: "Atomically commit every human-approved proposal for this provider. Fails closed on malformed tokens, incomplete batches, stale state, replayed IDs or changed capacity.",
       inputSchema: {
         type: "object",
         properties: {
-          proposalIds: { type: "array", items: { type: "string" }, minItems: 1, description: "Every proposal ID approved for this provider, exactly once." },
-          approvalToken: { type: "object", description: "Human-approved PACT token returned by relay_request_approval." },
+          proposalIds: {
+            type: "array",
+            items: { type: "string", minLength: 1, maxLength: 160 },
+            minItems: 1,
+            maxItems: MAX_OPEN_PROPOSALS,
+            uniqueItems: true,
+            description: "Every proposal ID approved for this provider, exactly once.",
+          },
+          approvalToken: {
+            type: "object",
+            description: "Human-approved PACT token returned by relay_request_approval.",
+          },
         },
         required: ["proposalIds", "approvalToken"],
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false, untrustedContentHint: false },
       execute: async (input: { proposalIds: string[]; approvalToken: ApprovalToken }) => {
-        if (!input || !Array.isArray(input.proposalIds) || !input.approvalToken || typeof input.approvalToken !== "object") {
+        pruneExpiredProposals();
+        if (!isRecord(input) || !Array.isArray(input.proposalIds) || !isRecord(input.approvalToken)) {
           return toolOutput({ ok: false, code: "INVALID_INPUT", message: "proposalIds and approvalToken are required." });
         }
         if (!trust) return toolOutput({ ok: false, code: "NO_RELAY_SESSION", message: "Provider has not established Relay session trust." });
 
-        const requestedIds = input.proposalIds.filter((id): id is string => typeof id === "string" && id.length > 0);
-        if (requestedIds.length !== input.proposalIds.length || requestedIds.length === 0) {
+        const requestedIds = input.proposalIds.filter((id): id is string => cleanText(id, 160) !== null);
+        if (requestedIds.length !== input.proposalIds.length || requestedIds.length === 0 || requestedIds.length > MAX_OPEN_PROPOSALS) {
           return toolOutput({ ok: false, code: "INVALID_PROPOSAL_IDS" });
         }
         if (new Set(requestedIds).size !== requestedIds.length) return toolOutput({ ok: false, code: "DUPLICATE_PROPOSAL" });
 
         const batch = requestedIds.map((id) => proposals.get(id));
         if (batch.some((proposal) => !proposal)) {
+          await syncCommitTool();
           return toolOutput({ ok: false, code: "PROPOSAL_NOT_FOUND", message: "At least one proposal ID is unknown, expired or already committed." });
         }
         const scoped = batch as ProviderProposal[];
@@ -167,13 +245,18 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
           return toolOutput({ ok: false, code: "STALE_PROPOSAL", message: `Provider is v${stateVersion}. Re-propose every reservation from this origin before commit.` });
         }
         if (scoped.some((proposal) => isExpired(proposal.expiresAt))) {
-          for (const proposal of scoped) if (isExpired(proposal.expiresAt)) proposals.delete(proposal.proposalId);
+          pruneExpiredProposals();
           await syncCommitTool();
+          render();
           return toolOutput({ ok: false, code: "PROPOSAL_EXPIRED" });
         }
 
         const demand = new Map<string, number>();
-        for (const proposal of scoped) demand.set(proposal.resourceId, (demand.get(proposal.resourceId) ?? 0) + proposal.quantity);
+        for (const proposal of scoped) {
+          const total = (demand.get(proposal.resourceId) ?? 0) + proposal.quantity;
+          if (!Number.isSafeInteger(total)) return toolOutput({ ok: false, code: "INVALID_DEMAND" });
+          demand.set(proposal.resourceId, total);
+        }
         for (const [resourceId, amount] of demand) {
           const resource = resources.find((candidate) => candidate.id === resourceId);
           if (!resource || resource.available < amount) {
@@ -197,12 +280,15 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
           amount: proposal.quantity,
           totalCost: proposal.totalCost,
         }));
+
+        // Any provider state advance invalidates every outstanding quote from
+        // the previous version, including quotes unrelated to this batch.
+        proposals.clear();
+        await syncCommitTool();
         for (const receipt of committed) {
           receipts.push(receipt);
-          proposals.delete(receipt.proposalId);
           post({ type: "relay_provider_receipt", receipt });
         }
-        await syncCommitTool();
         broadcastState();
         return toolOutput({ ok: true, atomic: true, providerStateVersion: stateVersion, receipts: committed });
       },
@@ -210,16 +296,41 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
     [relayOrigin],
   );
 
-  const syncCommitTool = async () => {
-    if (trust && validProposalCount() > 0) await commitTool.enable();
-    else commitTool.disable();
+  const scheduleExpiry = (): void => {
+    if (expiryTimer !== null) {
+      globalThis.clearTimeout(expiryTimer);
+      expiryTimer = null;
+    }
+    let nextExpiry = Number.POSITIVE_INFINITY;
+    for (const proposal of proposals.values()) {
+      const timestamp = Date.parse(proposal.expiresAt);
+      if (Number.isFinite(timestamp) && timestamp < nextExpiry) nextExpiry = timestamp;
+    }
+    if (!Number.isFinite(nextExpiry)) return;
+    expiryTimer = globalThis.setTimeout(() => {
+      expiryTimer = null;
+      const changed = pruneExpiredProposals();
+      void syncCommitTool().finally(() => {
+        if (changed) render();
+      });
+    }, Math.max(0, nextExpiry - Date.now() + 5));
   };
 
-  function injectDisruption() {
+  syncCommitTool = async (): Promise<void> => {
+    pruneExpiredProposals();
+    if (trust && validProposalCount() > 0) await commitTool.enable();
+    else commitTool.disable();
+    scheduleExpiry();
+  };
+
+  function injectDisruption(): void {
+    if (disruptionInjected) return;
     const target = resources.find((resource) => resource.id === seed.disruption.resourceId);
     if (!target) return;
-    target.available = seed.disruption.newAvailability;
+    target.available = Math.max(0, Math.floor(seed.disruption.newAvailability));
+    disruptionInjected = true;
     stateVersion += 1;
+    proposals.clear();
     void syncCommitTool();
     broadcastState();
   }
@@ -233,20 +344,33 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
         type: "object",
         properties: {
           minimum: { type: "number", minimum: 0, description: "Minimum availability required. Use 0 to return all resources." },
-          requiredTag: { type: "string", description: "Optional capability tag such as accessible, medical, or wheelchair." },
+          requiredTag: { type: "string", maxLength: 40, description: "Optional capability tag such as accessible, medical or wheelchair." },
         },
         additionalProperties: false,
       },
       annotations: { readOnlyHint: true, untrustedContentHint: false },
       execute: async (input: { minimum?: number; requiredTag?: string }) => {
-        const minimum = typeof input?.minimum === "number" && Number.isFinite(input.minimum) ? Math.max(0, input.minimum) : 0;
-        const requiredTag = typeof input?.requiredTag === "string" ? input.requiredTag.trim().toLowerCase().slice(0, 40) : undefined;
+        const minimum = typeof input?.minimum === "number" && Number.isFinite(input.minimum)
+          ? Math.max(0, input.minimum)
+          : 0;
+        const requiredTag = input?.requiredTag === undefined
+          ? undefined
+          : cleanText(input.requiredTag, 40)?.toLowerCase();
+        if (input?.requiredTag !== undefined && !requiredTag) {
+          return toolOutput({ ok: false, code: "INVALID_TAG" });
+        }
         const matches = resources.filter((resource) => {
           const amountOk = resource.available >= minimum;
           const tagOk = !requiredTag || resource.tags?.some((tag) => tag.toLowerCase().includes(requiredTag));
           return amountOk && tagOk;
         });
-        return toolOutput({ provider: seed.providerName, providerOrigin: window.location.origin, stateVersion, resources: matches });
+        return toolOutput({
+          ok: true,
+          provider: seed.providerName,
+          providerOrigin: window.location.origin,
+          stateVersion,
+          resources: structuredClone(matches),
+        });
       },
     },
     { exposedTo: [relayOrigin] },
@@ -256,7 +380,7 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
     {
       name: options.proposeToolName,
       title: `Propose ${seed.providerName} reservation`,
-      description: "Create a five-minute, non-binding reservation proposal. This does not consume capacity and cannot commit without later human approval.",
+      description: "Create a five-minute non-binding reservation proposal. This does not consume capacity and cannot commit without later human approval.",
       inputSchema: {
         type: "object",
         properties: {
@@ -269,29 +393,35 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
       },
       annotations: { readOnlyHint: false, untrustedContentHint: true },
       execute: async (input: { resourceId: string; quantity: number; purpose: string }) => {
-        if (!input || typeof input.resourceId !== "string" || typeof input.quantity !== "number" || typeof input.purpose !== "string") {
+        pruneExpiredProposals();
+        if (!isRecord(input)) return toolOutput({ ok: false, code: "INVALID_INPUT" });
+        const resourceId = cleanText(input.resourceId, 80);
+        const purpose = cleanText(input.purpose, 180);
+        if (!resourceId || !purpose || typeof input.quantity !== "number") {
           return toolOutput({ ok: false, code: "INVALID_INPUT" });
         }
-        const resource = resources.find((candidate) => candidate.id === input.resourceId);
-        const quantity = Math.floor(input.quantity);
-        const purpose = input.purpose.trim().slice(0, 180);
+        const resource = resources.find((candidate) => candidate.id === resourceId);
         if (!resource) return toolOutput({ ok: false, code: "RESOURCE_NOT_FOUND" });
-        if (!Number.isFinite(input.quantity) || quantity !== input.quantity || quantity < 1 || quantity > resource.available) {
+        if (!Number.isSafeInteger(input.quantity) || input.quantity < 1 || input.quantity > resource.available) {
           return toolOutput({ ok: false, code: "INSUFFICIENT_CAPACITY", available: resource.available, requested: input.quantity });
         }
-        if (!purpose) return toolOutput({ ok: false, code: "PURPOSE_REQUIRED" });
+        if (proposals.size >= MAX_OPEN_PROPOSALS) {
+          return toolOutput({ ok: false, code: "TOO_MANY_OPEN_PROPOSALS", maximum: MAX_OPEN_PROPOSALS });
+        }
 
         const now = Date.now();
+        const totalCost = input.quantity * resource.unitCost;
+        if (!Number.isSafeInteger(Math.round(totalCost * 100))) return toolOutput({ ok: false, code: "INVALID_COST" });
         const proposal: ProviderProposal = {
           proposalId: `${seed.providerId}-${crypto.randomUUID()}`,
           providerId: seed.providerId,
           providerOrigin: window.location.origin,
           resourceId: resource.id,
           resourceLabel: resource.label,
-          quantity,
+          quantity: input.quantity,
           unit: resource.unit,
           unitCost: resource.unitCost,
-          totalCost: Number((quantity * resource.unitCost).toFixed(2)),
+          totalCost: Number(totalCost.toFixed(2)),
           purpose,
           stateVersion,
           createdAt: new Date(now).toISOString(),
@@ -301,22 +431,37 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
         post({ type: "relay_provider_proposal", proposal });
         await syncCommitTool();
         render();
-        return toolOutput({ ok: true, proposal, next: `Stage this proposal in Relay. ${options.commitToolName} is now available but requires approval.` });
+        return toolOutput({ ok: true, proposal, next: `Stage this proposal in Relay. ${options.commitToolName} requires exact human approval.` });
       },
     },
     { exposedTo: [relayOrigin] },
   );
 
   window.addEventListener("message", (event: MessageEvent<unknown>) => {
-    if (event.source !== window.parent || event.origin !== relayOrigin || !isRelaySessionInit(event.data)) return;
-    if (normalizeOrigin(event.data.commandOrigin) !== relayOrigin) return;
+    if (event.source !== window.parent || event.origin !== relayOrigin) return;
+    if (!isRelaySessionInit(event.data, relayOrigin)) return;
 
-    const sessionChanged = Boolean(trust?.sessionId && trust.sessionId !== event.data.sessionId);
-    trust = { sessionId: event.data.sessionId, publicKeyJwk: event.data.publicKeyJwk };
+    const nextFingerprint = keyFingerprint(event.data.publicKeyJwk);
+    if (trust && trust.sessionId === event.data.sessionId && trust.keyFingerprint !== nextFingerprint) {
+      console.warn(`[${seed.providerName}] Rejected public-key substitution inside an active Relay session.`);
+      return;
+    }
+
+    const sessionChanged = Boolean(trust && trust.sessionId !== event.data.sessionId);
+    trust = {
+      sessionId: event.data.sessionId,
+      publicKeyJwk: structuredClone(event.data.publicKeyJwk),
+      keyFingerprint: nextFingerprint,
+    };
     if (sessionChanged) proposals.clear();
     void syncCommitTool();
     render();
   });
+
+  window.addEventListener("pagehide", () => {
+    if (expiryTimer !== null) globalThis.clearTimeout(expiryTimer);
+    commitTool.disable();
+  }, { once: true });
 
   post({ type: "relay_provider_ready", providerId: seed.providerId });
   broadcastState();
