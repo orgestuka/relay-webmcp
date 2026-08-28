@@ -10,11 +10,18 @@ import type {
 const encoder = new TextEncoder();
 const MAX_APPROVAL_LIFETIME_MS = 10 * 60_000;
 const CLOCK_SKEW_MS = 30_000;
+const MAX_SCOPES = 100;
+const BASE64URL = /^[A-Za-z0-9_-]+$/;
 
 type ValidationResult = { ok: true } | { ok: false; code: string; message: string };
 
 function fail(code: string, message: string): ValidationResult {
   return { ok: false, code, message };
+}
+
+function isPlainObject(value: object): boolean {
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 export function canonicalize(value: unknown, seen = new Set<object>()): string {
@@ -29,7 +36,13 @@ export function canonicalize(value: unknown, seen = new Set<object>()): string {
 
   seen.add(value);
   try {
-    if (Array.isArray(value)) return `[${value.map((item) => canonicalize(item, seen)).join(",")}]`;
+    if (Array.isArray(value)) {
+      for (let index = 0; index < value.length; index += 1) {
+        if (!(index in value)) throw new TypeError("PACT canonical arrays cannot contain sparse entries.");
+      }
+      return `[${value.map((item) => canonicalize(item, seen)).join(",")}]`;
+    }
+    if (!isPlainObject(value)) throw new TypeError("PACT canonical data must use plain objects.");
     const record = value as Record<string, unknown>;
     return `{${Object.keys(record)
       .sort()
@@ -46,6 +59,7 @@ function base64Url(bytes: ArrayBuffer): string {
 }
 
 function fromBase64Url(value: string): Uint8Array<ArrayBuffer> {
+  if (!BASE64URL.test(value)) throw new TypeError("Invalid base64url data.");
   const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
   const raw = atob(padded);
   return Uint8Array.from(raw, (char) => char.charCodeAt(0));
@@ -53,7 +67,8 @@ function fromBase64Url(value: string): Uint8Array<ArrayBuffer> {
 
 function cents(value: number): number | null {
   if (!Number.isFinite(value) || value < 0) return null;
-  return Math.round(value * 100);
+  const result = Math.round(value * 100);
+  return Number.isSafeInteger(result) ? result : null;
 }
 
 function sameMoney(left: number, right: number): boolean {
@@ -62,22 +77,47 @@ function sameMoney(left: number, right: number): boolean {
   return leftCents !== null && rightCents !== null && leftCents === rightCents;
 }
 
+function validText(value: unknown, maximum: number, minimum = 1): value is string {
+  return typeof value === "string" && value.length >= minimum && value.length <= maximum && !/[\u0000-\u001f\u007f]/.test(value);
+}
+
+function validProviderId(value: unknown): value is ProviderId {
+  return value === "shelter" || value === "transit" || value === "supply";
+}
+
 function validOrigin(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.origin === value && (url.protocol === "https:" || url.hostname === "localhost" || url.hostname === "127.0.0.1");
+    const local = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+    return url.origin === value && (url.protocol === "https:" || (url.protocol === "http:" && local));
   } catch {
     return false;
   }
 }
 
+export function isP256PublicJwk(value: unknown): value is JsonWebKey {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const jwk = value as JsonWebKey;
+  if (jwk.kty !== "EC" || jwk.crv !== "P-256" || typeof jwk.x !== "string" || typeof jwk.y !== "string") return false;
+  if (typeof jwk.d === "string") return false;
+  if (!BASE64URL.test(jwk.x) || !BASE64URL.test(jwk.y)) return false;
+  if (jwk.key_ops && (!jwk.key_ops.includes("verify") || jwk.key_ops.includes("sign"))) return false;
+  if (jwk.use && jwk.use !== "sig") return false;
+  if (jwk.ext === false) return false;
+  return true;
+}
+
 function isApprovalToken(value: unknown): value is ApprovalToken {
-  if (!value || typeof value !== "object") return false;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const candidate = value as Partial<ApprovalToken>;
   return candidate.algorithm === "ECDSA_P256_SHA256"
     && typeof candidate.signature === "string"
+    && candidate.signature.length >= 40
+    && candidate.signature.length <= 256
+    && BASE64URL.test(candidate.signature)
     && Boolean(candidate.payload)
-    && typeof candidate.payload === "object";
+    && typeof candidate.payload === "object"
+    && !Array.isArray(candidate.payload);
 }
 
 export async function sha256(value: unknown): Promise<string> {
@@ -102,10 +142,15 @@ export function proposalScope(proposal: ProviderProposal): ProposalScope {
   };
 }
 
-export async function hashPlan(plan: Pick<PlanDraft, "planId" | "incidentId" | "maxBudget" | "proposals">): Promise<string> {
+export async function hashPlan(
+  plan: Pick<PlanDraft, "planId" | "incidentId" | "summary" | "rationale" | "revision" | "maxBudget" | "proposals">,
+): Promise<string> {
   return sha256({
     planId: plan.planId,
     incidentId: plan.incidentId,
+    summary: plan.summary,
+    rationale: plan.rationale,
+    revision: plan.revision,
     maximumCost: plan.maxBudget,
     scopes: plan.proposals.map(proposalScope).sort((a, b) => a.proposalId.localeCompare(b.proposalId)),
   });
@@ -118,6 +163,7 @@ export interface SessionSigner {
 }
 
 export async function createSessionSigner(sessionId: string = crypto.randomUUID()): Promise<SessionSigner> {
+  if (!validText(sessionId, 160)) throw new TypeError("PACT session ID is invalid.");
   const pair = (await crypto.subtle.generateKey(
     { name: "ECDSA", namedCurve: "P-256" },
     true,
@@ -140,7 +186,7 @@ export async function createSessionSigner(sessionId: string = crypto.randomUUID(
 }
 
 export async function verifyApprovalToken(token: unknown, publicKeyJwk: JsonWebKey): Promise<boolean> {
-  if (!isApprovalToken(token)) return false;
+  if (!isApprovalToken(token) || !isP256PublicJwk(publicKeyJwk)) return false;
   try {
     const key = await crypto.subtle.importKey(
       "jwk",
@@ -172,10 +218,13 @@ export function validateApprovalEnvelope(
 ): ValidationResult {
   if (!isApprovalToken(token)) return fail("MALFORMED_APPROVAL", "Approval token shape is invalid.");
   const payload = token.payload;
-  if (payload.sessionId !== expectedSessionId) return fail("SESSION_MISMATCH", "Approval belongs to another Relay session.");
+  if (!validText(payload.sessionId, 160) || payload.sessionId !== expectedSessionId) {
+    return fail("SESSION_MISMATCH", "Approval belongs to another Relay session.");
+  }
   if (!Array.isArray(payload.scopes) || payload.scopes.length === 0) return fail("EMPTY_SCOPE", "Approval contains no proposal scopes.");
-  if (typeof payload.planId !== "string" || !payload.planId || typeof payload.planHash !== "string" || !payload.planHash) {
-    return fail("MALFORMED_APPROVAL", "Approval is missing its plan identity.");
+  if (payload.scopes.length > MAX_SCOPES) return fail("TOO_MANY_SCOPES", "Approval contains too many proposal scopes.");
+  if (!validText(payload.planId, 180) || typeof payload.planHash !== "string" || payload.planHash.length !== 43 || !BASE64URL.test(payload.planHash)) {
+    return fail("MALFORMED_APPROVAL", "Approval is missing a valid plan identity.");
   }
 
   const issuedAt = Date.parse(payload.issuedAt);
@@ -193,18 +242,38 @@ export function validateApprovalEnvelope(
   const seen = new Set<string>();
   let aggregateCost = 0;
   for (const scope of payload.scopes) {
-    if (!scope || typeof scope !== "object" || typeof scope.proposalId !== "string" || !scope.proposalId) {
+    if (!scope || typeof scope !== "object" || Array.isArray(scope) || !validText(scope.proposalId, 160)) {
       return fail("MALFORMED_SCOPE", "Approval contains a malformed proposal scope.");
     }
     if (seen.has(scope.proposalId)) return fail("DUPLICATE_SCOPE", "Approval repeats a proposal scope.");
     seen.add(scope.proposalId);
+    if (!validProviderId(scope.providerId)) return fail("MALFORMED_SCOPE", "Approval contains an unknown provider.");
     if (!validOrigin(scope.providerOrigin)) return fail("INVALID_PROVIDER_ORIGIN", "Approval contains an invalid provider origin.");
-    if (!Number.isInteger(scope.stateVersion) || scope.stateVersion < 1 || !Number.isInteger(scope.quantity) || scope.quantity < 1) {
-      return fail("MALFORMED_SCOPE", "Approval scope has invalid quantity or state version.");
-    }
+    if (
+      !validText(scope.resourceId, 80)
+      || !validText(scope.resourceLabel, 120)
+      || !validText(scope.unit, 80)
+      || !validText(scope.purpose, 180)
+      || !Number.isInteger(scope.stateVersion)
+      || scope.stateVersion < 1
+      || !Number.isInteger(scope.quantity)
+      || scope.quantity < 1
+    ) return fail("MALFORMED_SCOPE", "Approval scope has invalid operation data.");
+
+    const unitCost = cents(scope.unitCost);
     const scopeCost = cents(scope.maxCost);
-    if (scopeCost === null) return fail("MALFORMED_SCOPE", "Approval scope has an invalid cost.");
+    if (unitCost === null || scopeCost === null || !Number.isSafeInteger(unitCost * scope.quantity)) {
+      return fail("MALFORMED_SCOPE", "Approval scope has an invalid cost.");
+    }
+    if (scopeCost !== unitCost * scope.quantity) {
+      return fail("SCOPE_COST_INCONSISTENT", "Approval scope cost does not equal quantity multiplied by unit cost.");
+    }
+    const scopeExpiry = Date.parse(scope.expiresAt);
+    if (!Number.isFinite(scopeExpiry) || scopeExpiry <= issuedAt) {
+      return fail("SCOPE_EXPIRED", "Approval contains a proposal that was not valid when consent was issued.");
+    }
     aggregateCost += scopeCost;
+    if (!Number.isSafeInteger(aggregateCost)) return fail("INVALID_COST_CEILING", "Aggregate approval cost is outside the safe numeric range.");
   }
   if (aggregateCost > maximumCost) {
     return fail("AGGREGATE_COST_EXCEEDED", "The sum of all approved proposal scopes exceeds the human cost ceiling.");
@@ -252,6 +321,7 @@ export function validateApprovalForBatch(
 ): ValidationResult {
   const envelope = validateApprovalEnvelope(token, expectedSessionId, now);
   if (!envelope.ok) return envelope;
+  if (!validProviderId(providerId) || !validOrigin(providerOrigin)) return fail("PROVIDER_BATCH_MISMATCH", "Commit target provider is invalid.");
   if (proposals.length === 0) return fail("NO_PROPOSALS", "No proposals were supplied for commit.");
   const approval = token as ApprovalToken;
   const approvedIds = approval.payload.scopes
