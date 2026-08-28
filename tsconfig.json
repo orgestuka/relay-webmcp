@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@relay/contracts": ["packages/contracts/src/index.ts"],
+      "@relay/pact": ["packages/pact/src/index.ts"],
+      "@relay/webmcp-runtime": ["packages/webmcp-runtime/src/index.ts"],
+      "@relay/provider-runtime": ["packages/provider-runtime/src/index.ts"],
+      "@relay/simulation": ["packages/simulation/src/index.ts"]
+    }
+  }
+}
