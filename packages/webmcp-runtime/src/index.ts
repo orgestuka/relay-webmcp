@@ -85,6 +85,8 @@ export class DynamicTool {
 }
 
 export function toolOutput(value: unknown): string {
-  const text = JSON.stringify(value);
-  return text.length <= 1450 ? text : `${text.slice(0, 1400)}…`;
+  // Never truncate serialized protocol objects. A cut JSON string can corrupt
+  // signatures, proposal IDs or receipts. Callers should return compact shapes
+  // intentionally when context size matters.
+  return JSON.stringify(value);
 }
