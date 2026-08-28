@@ -3,7 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "scripts": {"dev":"vite --host 0.0.0.0 --port 5173","build":"vite build","preview":"vite preview --host 0.0.0.0 --port 5173"},
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 5173"
+  },
   "dependencies": {
     "@relay/contracts": "0.1.0",
     "@relay/pact": "0.1.0",
@@ -11,5 +15,8 @@
     "@relay/simulation": "0.1.0",
     "@relay/provider-runtime": "0.1.0"
   },
-  "devDependencies": {"typescript":"^5.8.3","vite":"^7.1.3"}
+  "devDependencies": {
+    "typescript": "5.8.3",
+    "vite": "7.1.3"
+  }
 }
