@@ -1,3 +1,5 @@
+export { validateEvacuationPlan, type PolicyCheck, type PolicyResult } from "./policy";
+
 import type { ProviderId, ResourceRecord } from "@relay/contracts";
 
 export const incident = {
@@ -13,6 +15,7 @@ export const incident = {
     "Provide at least 9 wheelchair-accessible transport seats.",
     "Keep at least 20 beds unallocated at North Shelter.",
     "Do not exceed €5,000 total committed cost.",
+    "Provide one evacuation kit per resident and one mobility medical kit per wheelchair user.",
     "No reservation may commit without explicit human approval.",
   ],
 };
