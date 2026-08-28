@@ -8,7 +8,8 @@
     "dev": "concurrently -n relay,shelter,transit,supply \"npm run dev -w @relay/command\" \"npm run dev -w @relay/shelter-grid\" \"npm run dev -w @relay/transit-ops\" \"npm run dev -w @relay/supply-hub\"",
     "build": "npm run build -w @relay/command && npm run build -w @relay/shelter-grid && npm run build -w @relay/transit-ops && npm run build -w @relay/supply-hub",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.check.json --noEmit"
+    "typecheck": "tsc -p tsconfig.check.json --noEmit",
+    "verify": "npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
