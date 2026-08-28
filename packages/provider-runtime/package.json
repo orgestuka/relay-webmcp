@@ -1,0 +1,1 @@
+{"name":"@relay/provider-runtime","version":"0.1.0","type":"module","exports":{".":"./src/index.ts","./provider.css":"./src/provider.css"},"dependencies":{"@relay/contracts":"0.1.0","@relay/pact":"0.1.0","@relay/webmcp-runtime":"0.1.0","@relay/simulation":"0.1.0"}}
