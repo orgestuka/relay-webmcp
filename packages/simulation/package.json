@@ -1,0 +1,1 @@
+{"name":"@relay/simulation","version":"0.1.0","type":"module","exports":"./src/index.ts","dependencies":{"@relay/contracts":"0.1.0"}}
