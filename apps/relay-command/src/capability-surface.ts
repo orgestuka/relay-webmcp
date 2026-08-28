@@ -1,66 +1,137 @@
 import "./capability-surface.css";
 import type { ProviderId } from "@relay/contracts";
+import { getModelContext, type RegisteredTool } from "@relay/webmcp-runtime";
 
-interface RegisteredToolView {
-  name: string;
-  title?: string;
-  origin: string;
-  annotations?: { readOnlyHint?: boolean; untrustedContentHint?: boolean };
-}
-
-const origins: Record<ProviderId, string> = {
-  shelter: import.meta.env.VITE_SHELTER_ORIGIN || "http://localhost:5174",
-  transit: import.meta.env.VITE_TRANSIT_ORIGIN || "http://localhost:5175",
-  supply: import.meta.env.VITE_SUPPLY_ORIGIN || "http://localhost:5176",
+const providerOrigins: Record<ProviderId, string> = {
+  shelter: new URL(import.meta.env.VITE_SHELTER_ORIGIN || "http://localhost:5174", window.location.href).origin,
+  transit: new URL(import.meta.env.VITE_TRANSIT_ORIGIN || "http://localhost:5175", window.location.href).origin,
+  supply: new URL(import.meta.env.VITE_SUPPLY_ORIGIN || "http://localhost:5176", window.location.href).origin,
 };
 
 const panel = document.createElement("aside");
 panel.className = "capability-surface";
-panel.innerHTML = `<div class="capability-head"><span>AGENT CAPABILITY SURFACE</span><b>booting</b></div>`;
+panel.setAttribute("aria-label", "Live WebMCP capability surface");
 document.body.append(panel);
 
 let refreshGeneration = 0;
+let refreshTimer: number | null = null;
 
-function originLabel(origin: string): string {
-  if (origin === window.location.origin) return "Relay";
-  if (origin === origins.shelter) return "Shelter";
-  if (origin === origins.transit) return "Transit";
-  if (origin === origins.supply) return "Supply";
-  return new URL(origin).hostname;
+function originLabel(origin: string | undefined): string {
+  if (!origin || origin === window.location.origin) return "Relay";
+  if (origin === providerOrigins.shelter) return "Shelter";
+  if (origin === providerOrigins.transit) return "Transit";
+  if (origin === providerOrigins.supply) return "Supply";
+  try {
+    return new URL(origin).hostname;
+  } catch {
+    return "Unknown";
+  }
+}
+
+function renderHeader(status: string, warning = false): HTMLElement {
+  const head = document.createElement("div");
+  head.className = "capability-head";
+  const title = document.createElement("span");
+  title.textContent = "AGENT CAPABILITY SURFACE";
+  const state = document.createElement("b");
+  state.textContent = status;
+  if (warning) state.className = "capability-warn";
+  head.append(title, state);
+  return head;
+}
+
+function renderTools(tools: RegisteredTool[]): void {
+  const fragment = document.createDocumentFragment();
+  fragment.append(renderHeader(`${tools.length} live tools`));
+
+  const list = document.createElement("div");
+  list.className = "capability-list";
+  if (!tools.length) {
+    const empty = document.createElement("div");
+    empty.className = "capability-empty";
+    empty.textContent = "Waiting for registered tools…";
+    list.append(empty);
+  } else {
+    for (const tool of tools) {
+      const row = document.createElement("div");
+      row.className = `capability-tool ${tool.annotations?.readOnlyHint ? "is-read" : "is-write"}`;
+      const origin = document.createElement("span");
+      origin.className = "capability-origin";
+      origin.textContent = originLabel(tool.origin);
+      const name = document.createElement("code");
+      name.textContent = tool.name;
+      name.title = tool.title ?? tool.name;
+      const mode = document.createElement("i");
+      mode.textContent = tool.annotations?.readOnlyHint ? "READ" : "ACT";
+      row.append(origin, name, mode);
+      list.append(row);
+    }
+  }
+  fragment.append(list);
+
+  const foot = document.createElement("div");
+  foot.className = "capability-foot";
+  foot.append("Live from ");
+  const getTools = document.createElement("code");
+  getTools.textContent = "getTools()";
+  foot.append(getTools, " + ");
+  const toolchange = document.createElement("code");
+  toolchange.textContent = "toolchange";
+  foot.append(toolchange);
+  fragment.append(foot);
+  panel.replaceChildren(fragment);
+}
+
+function renderFailure(message: string): void {
+  const fragment = document.createDocumentFragment();
+  fragment.append(renderHeader("discovery blocked", true));
+  const empty = document.createElement("div");
+  empty.className = "capability-empty";
+  empty.textContent = message;
+  fragment.append(empty);
+  panel.replaceChildren(fragment);
 }
 
 async function refreshCapabilitySurface(): Promise<void> {
   const generation = ++refreshGeneration;
-  const context = document.modelContext;
+  const context = getModelContext();
   if (!context?.getTools) {
-    panel.innerHTML = `<div class="capability-head"><span>AGENT CAPABILITY SURFACE</span><b class="capability-warn">WebMCP unavailable</b></div>`;
+    panel.replaceChildren(renderHeader("WebMCP unavailable", true));
     return;
   }
 
   try {
-    const raw = await context.getTools({ fromOrigins: Object.values(origins) });
+    const [local, remote] = await Promise.all([
+      context.getTools(),
+      context.getTools({ fromOrigins: Object.values(providerOrigins) }),
+    ]);
     if (generation !== refreshGeneration) return;
-    const tools = (raw as RegisteredToolView[]).sort((a, b) => a.origin.localeCompare(b.origin) || a.name.localeCompare(b.name));
-    panel.innerHTML = `
-      <div class="capability-head"><span>AGENT CAPABILITY SURFACE</span><b>${tools.length} live tools</b></div>
-      <div class="capability-list">
-        ${tools.map((tool) => `<div class="capability-tool ${tool.annotations?.readOnlyHint ? "is-read" : "is-write"}">
-          <span class="capability-origin">${originLabel(tool.origin)}</span>
-          <code>${tool.name}</code>
-          <i>${tool.annotations?.readOnlyHint ? "READ" : "ACT"}</i>
-        </div>`).join("") || `<div class="capability-empty">Waiting for registered tools…</div>`}
-      </div>
-      <div class="capability-foot">Driven by <code>getTools()</code> + <code>toolchange</code></div>`;
+
+    const unique = new Map<string, RegisteredTool>();
+    for (const tool of [...local, ...remote]) {
+      if (!tool || typeof tool.name !== "string") continue;
+      unique.set(`${tool.origin ?? window.location.origin}|${tool.name}`, tool);
+    }
+    const tools = [...unique.values()].sort((left, right) => {
+      const originOrder = originLabel(left.origin).localeCompare(originLabel(right.origin));
+      return originOrder || left.name.localeCompare(right.name);
+    });
+    renderTools(tools);
   } catch (error) {
-    panel.innerHTML = `<div class="capability-head"><span>AGENT CAPABILITY SURFACE</span><b class="capability-warn">discovery blocked</b></div><div class="capability-empty">${error instanceof Error ? error.message : "Unable to query tool surface"}</div>`;
+    renderFailure(error instanceof Error ? error.message : "Unable to query the live tool surface.");
   }
 }
 
-document.modelContext?.addEventListener("toolchange", () => {
-  void refreshCapabilitySurface();
-});
+function scheduleRefresh(delayMs = 0): void {
+  if (refreshTimer !== null) globalThis.clearTimeout(refreshTimer);
+  refreshTimer = globalThis.setTimeout(() => {
+    refreshTimer = null;
+    void refreshCapabilitySurface();
+  }, delayMs);
+}
 
+getModelContext()?.addEventListener("toolchange", () => scheduleRefresh(35));
 window.addEventListener("load", () => {
-  void refreshCapabilitySurface();
-  window.setTimeout(() => void refreshCapabilitySurface(), 700);
+  scheduleRefresh();
+  scheduleRefresh(700);
 });
