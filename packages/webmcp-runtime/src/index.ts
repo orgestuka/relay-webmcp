@@ -15,7 +15,7 @@ export interface ToolDefinition<TInput extends object = Record<string, unknown>>
 interface ModelContextLike extends EventTarget {
   registerTool(tool: ToolDefinition, options?: { signal?: AbortSignal; exposedTo?: string[] }): Promise<void>;
   getTools?(options?: { fromOrigins?: string[] }): Promise<unknown[]>;
-  executeTool?(tool: unknown, input?: object, options?: { signal?: AbortSignal }): Promise<string>;
+  executeTool?(tool: unknown, input?: string, options?: { signal?: AbortSignal }): Promise<string | null>;
 }
 
 declare global {
@@ -73,8 +73,14 @@ export class DynamicTool {
   }
 
   disable(): void {
-    this.#controller?.abort();
+    const controller = this.#controller;
     this.#controller = null;
+    if (!controller) return;
+
+    // Chrome versions before 153 can couple registration-signal abort with an
+    // in-flight execution. Defer unregistration to the next task so a tool can
+    // safely return its approval token / commit receipt before disappearing.
+    window.setTimeout(() => controller.abort(), 0);
   }
 }
 
