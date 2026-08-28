@@ -1,68 +1,110 @@
 import { describe, expect, it } from "vitest";
 import type { ProviderProposal, ProviderStateSnapshot } from "@relay/contracts";
-import { shelterSeed, supplySeed, transitSeed } from "./index";
-import { validateEvacuationPlan } from "./policy";
+import { shelterSeed, supplySeed, transitSeed, validateEvacuationPlan } from "./index";
 
-const states: ProviderStateSnapshot[] = [shelterSeed, transitSeed, supplySeed].map((seed) => ({
-  providerId: seed.providerId,
-  providerName: seed.providerName,
-  origin: `https://${seed.providerId}.example.test`,
-  stateVersion: 1,
-  updatedAt: new Date().toISOString(),
-  resources: structuredClone(seed.resources),
-}));
-
-function proposal(providerId: ProviderProposal["providerId"], resourceId: string, quantity: number, unitCost: number): ProviderProposal {
+function snapshot(seed: typeof shelterSeed, origin: string): ProviderStateSnapshot {
   return {
-    proposalId: `${providerId}-${resourceId}`,
-    providerId,
-    providerOrigin: `https://${providerId}.example.test`,
-    resourceId,
-    resourceLabel: resourceId,
-    quantity,
-    unit: "units",
-    unitCost,
-    totalCost: quantity * unitCost,
-    purpose: "policy test",
+    providerId: seed.providerId,
+    providerName: seed.providerName,
+    origin,
     stateVersion: 1,
-    createdAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    updatedAt: "2026-08-28T10:00:00.000Z",
+    resources: structuredClone(seed.resources),
   };
 }
 
-const validPlan = (): ProviderProposal[] => [
-  proposal("shelter", "east", 18, 10),
-  proposal("shelter", "south", 24, 9),
-  proposal("transit", "bus-32", 32, 29),
-  proposal("transit", "accessible-10", 10, 68),
-  proposal("supply", "evac-kit", 42, 12),
-  proposal("supply", "medical-kit", 9, 25),
+const states: ProviderStateSnapshot[] = [
+  snapshot(shelterSeed, "https://shelter.example.test"),
+  snapshot(transitSeed, "https://transit.example.test"),
+  snapshot(supplySeed, "https://supply.example.test"),
 ];
 
-describe("Riverside deterministic policy", () => {
-  it("accepts a plan that satisfies every hard constraint", () => {
+function proposal(
+  providerId: ProviderProposal["providerId"],
+  providerOrigin: string,
+  resourceId: string,
+  resourceLabel: string,
+  quantity: number,
+  unit: string,
+  unitCost: number,
+): ProviderProposal {
+  return {
+    proposalId: `${providerId}-${resourceId}`,
+    providerId,
+    providerOrigin,
+    resourceId,
+    resourceLabel,
+    quantity,
+    unit,
+    unitCost,
+    totalCost: quantity * unitCost,
+    purpose: "Deterministic policy test",
+    stateVersion: 1,
+    createdAt: "2026-08-28T10:00:00.000Z",
+    expiresAt: "2026-08-28T10:05:00.000Z",
+  };
+}
+
+function validPlan(): ProviderProposal[] {
+  return [
+    proposal("shelter", states[0].origin, "east", "East Shelter", 18, "beds", 10),
+    proposal("shelter", states[0].origin, "south", "South Shelter", 24, "beds", 9),
+    proposal("transit", states[1].origin, "bus-32", "Rapid Bus 32", 32, "seats", 29),
+    proposal("transit", states[1].origin, "accessible-10", "Access Shuttle 10", 10, "accessible seats", 68),
+    proposal("supply", states[2].origin, "evac-kit", "Evacuation Kit", 42, "kits", 12),
+    proposal("supply", states[2].origin, "medical-kit", "Mobility Medical Kit", 9, "kits", 25),
+  ];
+}
+
+function check(result: ReturnType<typeof validateEvacuationPlan>, id: string) {
+  const value = result.checks.find((candidate) => candidate.id === id);
+  if (!value) throw new Error(`Missing policy check ${id}`);
+  return value;
+}
+
+describe("Riverside evacuation policy", () => {
+  it("accepts the canonical six-operation plan", () => {
     const result = validateEvacuationPlan(validPlan(), states, 3000);
+
     expect(result.ok).toBe(true);
-    expect(result.checks.every((check) => check.pass)).toBe(true);
+    expect(result.checks.every((candidate) => candidate.pass)).toBe(true);
+    expect(check(result, "budget").actual).toBe(2733);
   });
 
-  it("rejects persuasive-but-incomplete plans", () => {
-    const incomplete = validPlan().filter((item) => item.resourceId !== "accessible-10");
-    const result = validateEvacuationPlan(incomplete, states, 3000);
+  it("rejects superficially sufficient transport with no accessible seats", () => {
+    const plan = validPlan().filter((candidate) => candidate.resourceId !== "accessible-10");
+    plan.push(proposal("transit", states[1].origin, "minibus-14", "Minibus 14", 10, "seats", 37));
+    const result = validateEvacuationPlan(plan, states, 3000);
+
+    expect(check(result, "transport_capacity").pass).toBe(true);
+    expect(check(result, "accessible_transport").pass).toBe(false);
     expect(result.ok).toBe(false);
-    expect(result.checks.find((check) => check.id === "accessible_transport")?.pass).toBe(false);
-    expect(result.checks.find((check) => check.id === "transport_capacity")?.pass).toBe(false);
   });
 
-  it("preserves the North Shelter reserve after replanning", () => {
-    const replanned = validPlan().filter((item) => item.providerId !== "shelter");
-    replanned.push(proposal("shelter", "east", 18, 10));
-    replanned.push(proposal("shelter", "south", 12, 9));
-    replanned.push(proposal("shelter", "north", 12, 14));
-    expect(validateEvacuationPlan(replanned, states, 3000).ok).toBe(true);
+  it("rejects a plan that consumes the protected North Shelter reserve", () => {
+    const plan = validPlan().filter((candidate) => candidate.providerId !== "shelter");
+    plan.push(proposal("shelter", states[0].origin, "north", "North Shelter", 27, "beds", 14));
+    plan.push(proposal("shelter", states[0].origin, "east", "East Shelter", 15, "beds", 10));
+    const result = validateEvacuationPlan(plan, states, 3000);
 
-    replanned[replanned.length - 1] = proposal("shelter", "north", 28, 14);
-    const result = validateEvacuationPlan(replanned, states, 4000);
-    expect(result.checks.find((check) => check.id === "north_reserve")?.pass).toBe(false);
+    expect(check(result, "shelter_capacity").pass).toBe(true);
+    expect(check(result, "north_reserve").actual).toBe(19);
+    expect(check(result, "north_reserve").pass).toBe(false);
+  });
+
+  it("rejects missing mobility support even when general kits are complete", () => {
+    const plan = validPlan().filter((candidate) => candidate.resourceId !== "medical-kit");
+    const result = validateEvacuationPlan(plan, states, 3000);
+
+    expect(check(result, "evacuation_kits").pass).toBe(true);
+    expect(check(result, "mobility_kits").pass).toBe(false);
+  });
+
+  it("enforces the human authority ceiling independently of resource feasibility", () => {
+    const result = validateEvacuationPlan(validPlan(), states, 2700);
+
+    expect(result.checks.filter((candidate) => candidate.id !== "budget").every((candidate) => candidate.pass)).toBe(true);
+    expect(check(result, "budget").pass).toBe(false);
+    expect(result.ok).toBe(false);
   });
 });
