@@ -4,6 +4,8 @@ import { readFile } from "node:fs/promises";
 const files = {
   package: "package.json",
   lockfile: "package-lock.json",
+  nvmrc: ".nvmrc",
+  ci: ".github/workflows/ci.yml",
   globals: "globals.d.ts",
   compose: "compose.yaml",
   dockerfile: "deploy/Dockerfile",
@@ -62,11 +64,20 @@ check(
   "A committed npm lockfileVersion 3 dependency graph is required for npm ci, CI and Docker reproducibility.",
 );
 check(
-  "package_manager_pinned",
-  packageJson?.packageManager === "npm@10.9.2",
-  files.package,
-  "The repository must pin npm 10.9.2.",
+  "exact_toolchain_declared",
+  packageJson?.packageManager === "npm@10.9.2"
+    && packageJson?.engines?.node === "22.16.0"
+    && packageJson?.engines?.npm === "10.9.2"
+    && content.nvmrc?.trim() === "22.16.0",
+  `${files.package}, ${files.nvmrc}`,
+  "packageManager, engines and .nvmrc must agree on Node 22.16.0 and npm 10.9.2.",
 );
+
+const ci = content.ci ?? "";
+check("ci_uses_nvmrc", ci.includes("node-version-file: .nvmrc"), files.ci, "GitHub Actions must consume the same exact Node pin as local validation.");
+check("ci_locked_install", ci.includes("npm ci --no-audit --no-fund") && !ci.includes("npm install --no-audit --no-fund"), files.ci, "CI must install the committed lockfile rather than resolve a new dependency graph.");
+check("ci_runs_full_verify", ci.includes("npm run verify"), files.ci, "CI must execute the complete repository verification graph.");
+check("ci_embeds_exact_commit", ci.includes("RELAY_RELEASE_SHA=${{ github.sha }}") && ci.includes("VITE_RELEASE_SHA=${{ github.sha }}"), files.ci, "CI preflight and image build must identify the exact checked-out commit.");
 
 for (const key of ["commandVite", "shelterVite", "transitVite", "supplyVite"]) {
   const source = content[key] ?? "";
@@ -99,6 +110,7 @@ check("compose_read_only", compose.includes("read_only: true"), files.compose, "
 check("compose_no_new_privileges", compose.includes("no-new-privileges:true"), files.compose, "Application containers must block privilege escalation.");
 
 const dockerfile = content.dockerfile ?? "";
+check("docker_exact_node_image", dockerfile.startsWith("FROM node:22.16.0-alpine AS build") && dockerfile.includes('test "$(node --version)" = "v22.16.0"'), files.dockerfile, "The production build must use and verify Node 22.16.0 exactly.");
 check("docker_release_sha_arg", dockerfile.includes("ARG VITE_RELEASE_SHA") && dockerfile.includes("VITE_RELEASE_SHA=$VITE_RELEASE_SHA"), files.dockerfile, "Docker must embed release provenance.");
 check("docker_locked_install", dockerfile.includes("COPY package.json package-lock.json") && dockerfile.includes("npm ci --no-audit --no-fund") && dockerfile.includes("npm@10.9.2"), files.dockerfile, "Docker must install the committed lockfile with the pinned npm version.");
 check("docker_verifies_before_runtime", dockerfile.indexOf("RUN npm run verify") >= 0 && dockerfile.indexOf("RUN npm run verify") < dockerfile.indexOf("FROM nginx:alpine"), files.dockerfile, "Unverified source must not reach the runtime image.");
@@ -157,6 +169,7 @@ check("verify_includes_meta_gates", typeof scripts.verify === "string" && script
 
 const releaseGate = content.releaseGate ?? "";
 check("release_gate_locked_install", releaseGate.includes("package-lock.json") && releaseGate.includes("lockfileVersion") && releaseGate.includes("npm ci") && releaseGate.includes("10.9.2"), files.releaseGate, "The operator gate must enforce and install the exact locked dependency graph.");
+check("release_gate_exact_toolchain", releaseGate.includes("node_pin_declared") && releaseGate.includes("nvm_pin_matches") && releaseGate.includes("node_exact") && releaseGate.includes("npm_exact") && releaseGate.includes("22.16.0"), files.releaseGate, "The operator gate must prove that package metadata, .nvmrc and the running process use one exact Node/npm toolchain.");
 check("release_gate_clean_after", releaseGate.includes("clean_worktree_after"), files.releaseGate, "Verification must leave the checkout unchanged.");
 check("release_gate_output_directory", releaseGate.includes("mkdirSync") && releaseGate.includes(".relay-artifacts"), files.releaseGate, "Machine-readable release evidence must have a safe ignored default location.");
 check("release_gate_caddy_sha", releaseGate.includes("RELAY_RELEASE_SHA") && releaseGate.includes("caddy_validate"), files.releaseGate, "Caddy validation must receive the exact release SHA used by production.");
@@ -165,7 +178,7 @@ check("script_syntax_gate", (content.scriptSyntax ?? "").includes('process.execP
 
 const failures = checks.filter((entry) => !entry.pass);
 const report = {
-  schema: "relay.release-surface-check.v3",
+  schema: "relay.release-surface-check.v4",
   checkedAt: new Date().toISOString(),
   pass: failures.length === 0,
   checkCount: checks.length,
