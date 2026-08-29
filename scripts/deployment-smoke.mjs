@@ -45,6 +45,15 @@ function validReleaseSha(value) {
   return /^[a-f0-9]{40}$/.test(String(value ?? "")) && !/^0+$/.test(String(value));
 }
 
+function consistentHeaderValue(value) {
+  const values = String(value ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  if (values.length === 0) return null;
+  return new Set(values).size === 1 ? values[0] : null;
+}
+
 function noStore(value) {
   return String(value ?? "").toLowerCase().split(",").some((part) => part.trim() === "no-store");
 }
@@ -94,12 +103,15 @@ function securityHeaderCheck(name, headers, expectedOrigins) {
 }
 
 async function releaseManifestCheck(origin, app, expectedSha, pageHeaders) {
-  const pageHeaderSha = pageHeaders.get("x-relay-release")?.trim().toLowerCase() ?? null;
+  const pageHeaderRaw = pageHeaders.get("x-relay-release");
+  const pageHeaderSha = consistentHeaderValue(pageHeaderRaw);
   const response = await fetchWithTimeout(`${origin}/release.json`, {
     headers: { Accept: "application/json" },
   });
-  const manifestHeaderSha = response.headers.get("x-relay-release")?.trim().toLowerCase() ?? null;
-  const manifestOriginAgentCluster = response.headers.get("origin-agent-cluster")?.trim() ?? null;
+  const manifestHeaderRaw = response.headers.get("x-relay-release");
+  const manifestHeaderSha = consistentHeaderValue(manifestHeaderRaw);
+  const manifestOriginAgentClusterRaw = response.headers.get("origin-agent-cluster");
+  const manifestOriginAgentCluster = consistentHeaderValue(manifestOriginAgentClusterRaw);
   const manifestCacheControl = response.headers.get("cache-control");
   let manifest = null;
   let parseError = null;
@@ -123,8 +135,11 @@ async function releaseManifestCheck(origin, app, expectedSha, pageHeaders) {
     pass,
     status: response.status,
     expectedSha,
+    pageHeaderRaw,
     pageHeaderSha,
+    manifestHeaderRaw,
     manifestHeaderSha,
+    manifestOriginAgentClusterRaw,
     manifestOriginAgentCluster,
     manifestCacheControl,
     manifest,
@@ -138,32 +153,35 @@ async function probe(name, app, host, titleFragment, expectedOrigins, expectedRe
   try {
     const health = await fetchWithTimeout(`${origin}/healthz`, { headers: { Accept: "text/plain" } });
     const healthText = await health.text();
+    const healthOriginAgentClusterRaw = health.headers.get("origin-agent-cluster");
     result.checks.push({
       id: "healthz",
       pass: health.ok
         && healthText.trim() === "ok"
-        && health.headers.get("origin-agent-cluster")?.trim() === "?1"
+        && consistentHeaderValue(healthOriginAgentClusterRaw) === "?1"
         && noStore(health.headers.get("cache-control")),
       status: health.status,
       body: healthText.trim(),
-      originAgentCluster: health.headers.get("origin-agent-cluster"),
+      originAgentCluster: healthOriginAgentClusterRaw,
       cacheControl: health.headers.get("cache-control"),
     });
 
     const page = await fetchWithTimeout(origin, { headers: { Accept: "text/html" } });
     const html = await page.text();
-    const originAgentCluster = page.headers.get("origin-agent-cluster");
+    const originAgentClusterRaw = page.headers.get("origin-agent-cluster");
+    const nosniffRaw = page.headers.get("x-content-type-options");
+    const referrerPolicyRaw = page.headers.get("referrer-policy");
     result.checks.push({ id: "https_page", pass: page.ok && page.url.startsWith("https://"), status: page.status, finalUrl: page.url });
     result.checks.push({ id: "title", pass: html.toLowerCase().includes(titleFragment.toLowerCase()), expectedFragment: titleFragment });
     result.checks.push({ id: "app_mount", pass: html.includes('id="app"') || html.includes("id='app'") });
     result.checks.push({ id: "html_no_store", pass: noStore(page.headers.get("cache-control")), value: page.headers.get("cache-control") });
-    result.checks.push({ id: "nosniff_header", pass: page.headers.get("x-content-type-options") === "nosniff", value: page.headers.get("x-content-type-options") });
-    result.checks.push({ id: "referrer_policy", pass: page.headers.get("referrer-policy") === "no-referrer", value: page.headers.get("referrer-policy") });
+    result.checks.push({ id: "nosniff_header", pass: consistentHeaderValue(nosniffRaw) === "nosniff", value: nosniffRaw });
+    result.checks.push({ id: "referrer_policy", pass: consistentHeaderValue(referrerPolicyRaw) === "no-referrer", value: referrerPolicyRaw });
     result.checks.push({
       id: "origin_agent_cluster_header",
-      pass: originAgentCluster?.trim() === "?1",
+      pass: consistentHeaderValue(originAgentClusterRaw) === "?1",
       expected: "?1",
-      value: originAgentCluster,
+      value: originAgentClusterRaw,
       consequence: "WebMCP registerTool/getTools reject non-origin-keyed documents with SecurityError.",
     });
     const securityHeaders = securityHeaderCheck(name, page.headers, expectedOrigins);
@@ -184,13 +202,14 @@ async function probe(name, app, host, titleFragment, expectedOrigins, expectedRe
       const response = await fetchWithTimeout(`${origin}${path}`);
       const body = await response.text();
       assets.push({ path, status: response.status, body });
+      const assetOriginAgentClusterRaw = response.headers.get("origin-agent-cluster");
       result.checks.push({
         id: `asset_${path}`,
         pass: response.ok
-          && response.headers.get("origin-agent-cluster")?.trim() === "?1"
+          && consistentHeaderValue(assetOriginAgentClusterRaw) === "?1"
           && String(response.headers.get("cache-control") ?? "").includes("immutable"),
         status: response.status,
-        originAgentCluster: response.headers.get("origin-agent-cluster"),
+        originAgentCluster: assetOriginAgentClusterRaw,
         cacheControl: response.headers.get("cache-control"),
       });
     }
@@ -236,7 +255,7 @@ for (const [name, app, host, title, expectedOrigins] of targets) {
 }
 
 const report = {
-  schema: "relay.deployment-smoke.v5",
+  schema: "relay.deployment-smoke.v6",
   executedAt: new Date().toISOString(),
   evidenceType: "deployed-four-origin-security-and-release-provenance-smoke",
   releaseSha,
