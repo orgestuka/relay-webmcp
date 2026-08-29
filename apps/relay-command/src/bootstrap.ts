@@ -76,8 +76,16 @@ async function boot(): Promise<void> {
 
   // OpenAI's current site-tools client does not expose tools provided only by
   // embedded content. Relay therefore enables a fixed top-level bridge by
-  // default. ?direct=1 exists solely for controlled compatibility diagnosis.
-  if (!directOnly) await import("./compatibility-bridge");
+  // default. Bound its initial registration race before diagnostics become
+  // callable so a fast first ChatGPT probe does not observe a false negative.
+  if (!directOnly) {
+    await import("./compatibility-bridge");
+    const { waitForInitialBridgeSurface } = await import("./bridge-readiness");
+    const readiness = await waitForInitialBridgeSurface();
+    if (!readiness.pass) {
+      console.warn("[Relay bridge] Initial capability surface is incomplete", readiness);
+    }
+  }
 
   // Release identity is part of the permanent compatibility surface. Register
   // it before diagnostics so the first diagnostic cannot observe a transiently
