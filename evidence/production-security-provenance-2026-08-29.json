@@ -1,0 +1,60 @@
+{
+  "schema": "relay.production-security-provenance.v1",
+  "sourceCommit": "dc4d61ce352c40c2c25062f6aee472945a82420b",
+  "executedAt": "2026-08-29T11:37:34.938Z",
+  "environment": {
+    "node": "v22.16.0",
+    "mode": "dependency-free source gates and isolated manifest-writer runtime test"
+  },
+  "commands": [
+    "node scripts/security-headers-check.mjs",
+    "node scripts/release-provenance-check.mjs",
+    "node scripts/write-release-manifests.mjs 1234567890abcdef1234567890abcdef12345678",
+    "node scripts/write-release-manifests.mjs 0000000000000000000000000000000000000000"
+  ],
+  "result": "pass",
+  "checks": {
+    "securityHeaderSourceGate": {
+      "pass": true,
+      "passed": 9,
+      "failed": 0,
+      "covers": [
+        "HSTS at the HTTPS edge",
+        "Relay Command CSP",
+        "provider frame-ancestor CSP",
+        "exact WebMCP Permissions-Policy delegation",
+        "single origin-aware policy owner",
+        "iframe allow=tools",
+        "provider exposedTo origin binding",
+        "deployed security-header smoke coverage"
+      ]
+    },
+    "releaseProvenanceSourceGate": {
+      "pass": true,
+      "passed": 8,
+      "failed": 0,
+      "covers": [
+        "deployment SHA input",
+        "Compose build and edge propagation",
+        "Docker release-manifest generation",
+        "X-Relay-Release edge header",
+        "fail-closed manifest writer",
+        "deployment preflight SHA validation",
+        "four-origin release consistency smoke",
+        "TypeScript environment contract"
+      ]
+    },
+    "manifestWriter": {
+      "validShaAccepted": true,
+      "applicationsWritten": [
+        "relay-command",
+        "shelter-grid",
+        "transit-ops",
+        "supply-hub"
+      ],
+      "allManifestsBoundToSameSha": true,
+      "allZeroPlaceholderRejected": true
+    }
+  },
+  "boundary": "This evidence proves the source gates and isolated release-manifest generator. It does not prove npm ci, the full Vite build, Docker/Caddy runtime, four deployed HTTPS origins or actual ChatGPT WebMCP execution."
+}
