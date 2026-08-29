@@ -59,6 +59,12 @@ async function boot(): Promise<void> {
   const directOnly = params.get("direct") === "1";
   const proofEnabled = params.get("proof") === "1" || import.meta.env.VITE_ENABLE_PROOF_RUNNER === "1";
 
+  // Install the authority input guard before relay_stage_plan is registered.
+  // The last human-confirmed ceiling then survives stale-plan recovery even if
+  // an agent later requests the original €5,000 incident maximum.
+  const { installAuthorityGuard } = await import("./authority-guard");
+  installAuthorityGuard();
+
   await import("./command-app");
 
   // OpenAI's current site-tools client does not expose tools provided only by
