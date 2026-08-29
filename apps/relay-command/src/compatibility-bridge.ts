@@ -1,11 +1,13 @@
 import {
   DynamicTool,
+  executeLocalRegisteredTool,
   getModelContext,
   registerTool,
   toolOutput,
   type RegisteredTool,
   type ToolAnnotations,
 } from "@relay/webmcp-runtime";
+import { bridgeCapabilityAllowed } from "./bridge-authority";
 import { recordApprovalEvidence } from "./release-state";
 
 interface BridgeSpec {
@@ -17,6 +19,13 @@ interface BridgeSpec {
   description: string;
   inputSchema: Record<string, unknown>;
   annotations: ToolAnnotations;
+  requiresHumanApproval: boolean;
+}
+
+interface PlanEnvelope {
+  plan?: {
+    status?: unknown;
+  } | null;
 }
 
 const commandOrigin = window.location.origin;
@@ -75,6 +84,7 @@ const specs: BridgeSpec[] = [
     description: `Strict top-level bridge to ${origins.shelter}::shelter_find_capacity. Read-only. The wrapper cannot select another origin or tool.`,
     inputSchema: searchSchema("Optional shelter capability tag such as accessible, medical or family."),
     annotations: { readOnlyHint: true, untrustedContentHint: false },
+    requiresHumanApproval: false,
   },
   {
     provider: "shelter",
@@ -85,6 +95,7 @@ const specs: BridgeSpec[] = [
     description: `Strict top-level bridge to ${origins.shelter}::shelter_propose_reservation. Creates a non-binding proposal and cannot commit capacity.`,
     inputSchema: proposalSchema(["north", "east", "south"]),
     annotations: { readOnlyHint: false, untrustedContentHint: true },
+    requiresHumanApproval: false,
   },
   {
     provider: "shelter",
@@ -92,9 +103,10 @@ const specs: BridgeSpec[] = [
     remoteName: "shelter_commit_reservation",
     wrapperName: "relay_bridge_shelter_commit_reservation",
     title: "Commit approved Shelter Grid batch",
-    description: `Strict top-level bridge to ${origins.shelter}::shelter_commit_reservation. The provider independently verifies the human-signed PACT token, exact scope and live state.`,
+    description: `Strict top-level bridge to ${origins.shelter}::shelter_commit_reservation. It is exposed only while Relay's exact plan is APPROVED. The provider independently verifies the human-signed PACT token, exact scope and live state.`,
     inputSchema: commitSchema,
     annotations: { readOnlyHint: false, untrustedContentHint: false },
+    requiresHumanApproval: true,
   },
   {
     provider: "transit",
@@ -105,6 +117,7 @@ const specs: BridgeSpec[] = [
     description: `Strict top-level bridge to ${origins.transit}::transit_find_accessible_routes. Read-only. The wrapper cannot select another origin or tool.`,
     inputSchema: searchSchema("Optional transport capability tag such as accessible or wheelchair."),
     annotations: { readOnlyHint: true, untrustedContentHint: false },
+    requiresHumanApproval: false,
   },
   {
     provider: "transit",
@@ -115,6 +128,7 @@ const specs: BridgeSpec[] = [
     description: `Strict top-level bridge to ${origins.transit}::transit_propose_reservation. Creates a non-binding proposal and cannot commit capacity.`,
     inputSchema: proposalSchema(["bus-32", "accessible-10", "minibus-14"]),
     annotations: { readOnlyHint: false, untrustedContentHint: true },
+    requiresHumanApproval: false,
   },
   {
     provider: "transit",
@@ -122,9 +136,10 @@ const specs: BridgeSpec[] = [
     remoteName: "transit_commit_reservation",
     wrapperName: "relay_bridge_transit_commit_reservation",
     title: "Commit approved Transit Ops batch",
-    description: `Strict top-level bridge to ${origins.transit}::transit_commit_reservation. The provider independently verifies the human-signed PACT token, exact scope and live state.`,
+    description: `Strict top-level bridge to ${origins.transit}::transit_commit_reservation. It is exposed only while Relay's exact plan is APPROVED. The provider independently verifies the human-signed PACT token, exact scope and live state.`,
     inputSchema: commitSchema,
     annotations: { readOnlyHint: false, untrustedContentHint: false },
+    requiresHumanApproval: true,
   },
   {
     provider: "supply",
@@ -135,6 +150,7 @@ const specs: BridgeSpec[] = [
     description: `Strict top-level bridge to ${origins.supply}::supply_check_stock. Read-only. The wrapper cannot select another origin or tool.`,
     inputSchema: searchSchema("Optional supply capability tag such as medical, mobility or water."),
     annotations: { readOnlyHint: true, untrustedContentHint: false },
+    requiresHumanApproval: false,
   },
   {
     provider: "supply",
@@ -145,6 +161,7 @@ const specs: BridgeSpec[] = [
     description: `Strict top-level bridge to ${origins.supply}::supply_propose_reservation. Creates a non-binding proposal and cannot commit capacity.`,
     inputSchema: proposalSchema(["evac-kit", "medical-kit", "water-crate"]),
     annotations: { readOnlyHint: false, untrustedContentHint: true },
+    requiresHumanApproval: false,
   },
   {
     provider: "supply",
@@ -152,9 +169,10 @@ const specs: BridgeSpec[] = [
     remoteName: "supply_commit_reservation",
     wrapperName: "relay_bridge_supply_commit_reservation",
     title: "Commit approved Supply Hub batch",
-    description: `Strict top-level bridge to ${origins.supply}::supply_commit_reservation. The provider independently verifies the human-signed PACT token, exact scope and live state.`,
+    description: `Strict top-level bridge to ${origins.supply}::supply_commit_reservation. It is exposed only while Relay's exact plan is APPROVED. The provider independently verifies the human-signed PACT token, exact scope and live state.`,
     inputSchema: commitSchema,
     annotations: { readOnlyHint: false, untrustedContentHint: false },
+    requiresHumanApproval: true,
   },
 ];
 
@@ -164,7 +182,33 @@ let syncInterval: number | null = null;
 let syncRunning = false;
 let syncRequested = false;
 let lastSyncAt: string | null = null;
+let lastPlanStatus: string | null = null;
 let lastError: string | null = null;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function parsePlanStatus(raw: unknown): string | null {
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) as unknown : raw;
+    if (!isRecord(parsed)) return null;
+    const envelope = parsed as PlanEnvelope;
+    return envelope.plan && typeof envelope.plan.status === "string"
+      ? envelope.plan.status
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readPlanStatus(): Promise<string | null> {
+  try {
+    return parsePlanStatus(await executeLocalRegisteredTool("relay_get_plan", {}));
+  } catch {
+    return null;
+  }
+}
 
 function exactRemoteTool(tools: RegisteredTool[], spec: BridgeSpec): RegisteredTool | undefined {
   return tools.find((tool) => tool.origin === spec.origin && tool.name === spec.remoteName);
@@ -180,13 +224,23 @@ async function discoverRemoteTools(): Promise<RegisteredTool[]> {
 function providerAccepted(result: string): boolean {
   try {
     const value = JSON.parse(result) as unknown;
-    return Boolean(value)
-      && typeof value === "object"
-      && !Array.isArray(value)
-      && (value as Record<string, unknown>).ok === true;
+    return isRecord(value) && value.ok === true;
   } catch {
     return false;
   }
+}
+
+function authorityFailure(spec: BridgeSpec, planStatus: string | null): string {
+  return toolOutput({
+    ok: false,
+    code: "HUMAN_APPROVAL_REQUIRED",
+    provider: spec.provider,
+    providerOrigin: spec.origin,
+    remoteTool: spec.remoteName,
+    currentPlanStatus: planStatus,
+    requiredPlanStatus: "APPROVED",
+    message: "Relay exposes consequential provider commit capability only while the exact staged plan remains human-approved.",
+  });
 }
 
 function wrapperFor(spec: BridgeSpec): DynamicTool {
@@ -225,6 +279,18 @@ function wrapperFor(spec: BridgeSpec): DynamicTool {
         });
       }
 
+      const planStatus = spec.requiresHumanApproval
+        ? await readPlanStatus()
+        : null;
+      if (!bridgeCapabilityAllowed({
+        remoteAvailable: true,
+        requiresHumanApproval: spec.requiresHumanApproval,
+        planStatus,
+      })) {
+        scheduleSync();
+        return authorityFailure(spec, planStatus);
+      }
+
       try {
         const result = await context.executeTool(remote, JSON.stringify(input ?? {}));
         if (result === null) {
@@ -235,7 +301,7 @@ function wrapperFor(spec: BridgeSpec): DynamicTool {
             remoteTool: spec.remoteName,
           });
         }
-        if (spec.remoteName.endsWith("_commit_reservation") && providerAccepted(result)) {
+        if (spec.requiresHumanApproval && providerAccepted(result)) {
           await recordApprovalEvidence(input?.approvalToken);
         }
         return result;
@@ -263,11 +329,24 @@ async function synchronizeWrappers(): Promise<void> {
   }
   syncRunning = true;
   try {
-    const remoteTools = await discoverRemoteTools();
+    const [remoteTools, planStatus] = await Promise.all([
+      discoverRemoteTools(),
+      readPlanStatus(),
+    ]);
+    lastPlanStatus = planStatus;
+
     for (const spec of specs) {
       const wrapper = wrapperFor(spec);
-      if (exactRemoteTool(remoteTools, spec)) await wrapper.enable();
-      else wrapper.disable();
+      const remoteAvailable = Boolean(exactRemoteTool(remoteTools, spec));
+      if (bridgeCapabilityAllowed({
+        remoteAvailable,
+        requiresHumanApproval: spec.requiresHumanApproval,
+        planStatus,
+      })) {
+        await wrapper.enable();
+      } else {
+        wrapper.disable();
+      }
     }
     lastSyncAt = new Date().toISOString();
     lastError = null;
@@ -298,30 +377,38 @@ async function bootBridge(): Promise<void> {
   await registerTool({
     name: "relay_bridge_status",
     title: "Read strict provider bridge status",
-    description: "Return the fixed origin-and-tool mapping used to expose provider capabilities at Relay's top level. Read-only; no arbitrary execution input exists.",
+    description: "Return fixed origin/tool mappings and their current human-authority gate. Read-only; no arbitrary execution input exists.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, untrustedContentHint: false },
-    execute: () => toolOutput({
-      ok: !lastError,
-      mode: "fixed-top-level-capability-bridge",
-      commandOrigin,
-      lastSyncAt,
-      lastError,
-      mappings: specs.map((spec) => ({
-        provider: spec.provider,
-        origin: spec.origin,
-        remoteTool: spec.remoteName,
-        wrapperTool: spec.wrapperName,
-        active: wrappers.get(spec.wrapperName)?.active ?? false,
-      })),
-      security: {
-        arbitraryOriginSelection: false,
-        arbitraryToolSelection: false,
-        providerAuthorizationBypassed: false,
-        dynamicCapabilityMirroring: true,
-        periodicDiscoveryFallback: true,
-      },
-    }),
+    execute: async () => {
+      const planStatus = await readPlanStatus();
+      return toolOutput({
+        ok: !lastError,
+        mode: "fixed-top-level-capability-bridge",
+        commandOrigin,
+        planStatus,
+        lastObservedPlanStatus: lastPlanStatus,
+        lastSyncAt,
+        lastError,
+        mappings: specs.map((spec) => ({
+          provider: spec.provider,
+          origin: spec.origin,
+          remoteTool: spec.remoteName,
+          wrapperTool: spec.wrapperName,
+          requiresHumanApproval: spec.requiresHumanApproval,
+          active: wrappers.get(spec.wrapperName)?.active ?? false,
+        })),
+        security: {
+          arbitraryOriginSelection: false,
+          arbitraryToolSelection: false,
+          providerAuthorizationBypassed: false,
+          humanApprovalRequiredForCommitWrappers: true,
+          invocationTimeAuthorityRecheck: true,
+          dynamicCapabilityMirroring: true,
+          periodicDiscoveryFallback: true,
+        },
+      });
+    },
   });
 
   context.addEventListener("toolchange", () => scheduleSync());
