@@ -116,7 +116,10 @@ Required output conditions:
     "toolchangeListenerInstalled": true
   },
   "relay": {
-    "permanentRegistrationPass": true
+    "runtimeRegistrationPass": true,
+    "clientVisibilityPass": true,
+    "initialBridgeRegistrationPass": true,
+    "initialBridgeVisibilityPass": true
   },
   "providerDiscoveryPass": true,
   "providerExecutionPass": true,
@@ -139,6 +142,8 @@ Required output conditions:
   ]
 }
 ```
+
+A read probe counts as successful only when the provider actually returns a semantic `{ "ok": true }` result. A listed tool that throws, returns null, returns invalid JSON or returns `{ "ok": false }` fails this gate.
 
 Save the complete raw JSON as:
 
@@ -337,13 +342,21 @@ COMMITTED
 6 receipts
 ```
 
-## 12. Audit bundle
+Save the complete raw ChatGPT tool sequence and final `relay_get_plan` output as:
+
+```text
+evidence/chatgpt/05-full-path.json
+```
+
+## 12. Final audit bundle
 
 Ask ChatGPT:
 
 ```text
 Call relay_get_audit_bundle and return the raw JSON without summarizing it.
 ```
+
+The audit tool reads Relay's locally registered plan and mesh tools directly. It does not recursively invoke WebMCP from inside another WebMCP call.
 
 Required output:
 
@@ -354,6 +367,12 @@ Required output:
   "digest": "<base64url digest>",
   "bundle": {
     "schema": "relay.audit.v1",
+    "approvals": "<provider-accepted signed PACT capsules>",
+    "consistency": {
+      "planStatus": "COMMITTED",
+      "allReceiptsApproved": true,
+      "pass": true
+    },
     "plan": "<final plan and receipts>",
     "mesh": "<final provider state>"
   }
@@ -363,12 +382,65 @@ Required output:
 Save:
 
 ```text
-evidence/chatgpt/05-final-audit-bundle.json
+evidence/chatgpt/06-final-audit-bundle.json
 ```
 
-If nested `executeTool` is rejected by the ChatGPT browser, preserve the failure result, then call `relay_get_plan` and `relay_get_mesh_state` directly and save both raw outputs. Mark the audit-bundle gate as failed until the implementation is adjusted.
+Any `APPROVAL_EVIDENCE_MISSING`, `AUDIT_STATE_INCONSISTENT` or `AUDIT_CAPTURE_UNAVAILABLE` result fails the release gate. Preserve the raw failure rather than summarizing it away.
 
-## 13. Direct-descendant diagnostic only
+## 13. Partial cross-provider commitment and recovery drill
+
+Run this as a separate validation after the main success path. Click **Reset scenario**, construct and approve the canonical six-operation plan again, then move quickly because the signed token expires after two minutes.
+
+1. Commit the complete Shelter Grid batch successfully.
+2. Call `relay_get_plan` and preserve the output. It must show:
+   - status `APPROVED`, not `COMMITTED`
+   - only Shelter Grid receipts present
+   - Transit Ops and Supply Hub still pending
+3. Intentionally call `relay_bridge_transit_commit_reservation` with only one of the two approved Transit Ops proposal IDs.
+4. Required result:
+
+```json
+{
+  "ok": false,
+  "code": "INCOMPLETE_PROVIDER_BATCH"
+}
+```
+
+5. Re-query Transit Ops immediately. Its state version and capacity must be unchanged because the failed local batch was atomic.
+6. Call `relay_get_audit_bundle` during this partial state. Required result:
+
+```json
+{
+  "ok": false,
+  "code": "AUDIT_STATE_INCONSISTENT",
+  "bundle": {
+    "consistency": {
+      "planStatus": "APPROVED",
+      "committed": false,
+      "pass": false
+    }
+  }
+}
+```
+
+This is the honest partial-completion representation. It must not claim global success.
+
+7. Retry Transit Ops with both approved Transit Ops proposal IDs and the same still-live PACT token.
+8. Commit the complete Supply Hub batch.
+9. Required final result:
+   - status `COMMITTED`
+   - all six receipts present once
+   - final `relay_get_audit_bundle` returns `ok: true`
+
+Save every raw result and before/after Transit Ops capacity snapshot as:
+
+```text
+evidence/chatgpt/07-partial-commit-recovery.json
+```
+
+A provider failure after token expiry or after that provider's state changes requires a fresh plan and fresh human approval. Do not reuse expired or stale authority.
+
+## 14. Direct-descendant diagnostic only
 
 Open:
 
@@ -389,13 +461,13 @@ Expected current outcome based on OpenAI's published limitation:
 
 Save the output separately and do not confuse it with the fixed-bridge test.
 
-## 14. Actual ChatGPT pass checklist
+## 15. Actual ChatGPT pass checklist
 
 - [ ] Tested in ChatGPT's supported built-in browser, not ordinary Chrome
 - [ ] `relay_diagnose_webmcp` returned raw JSON
-- [ ] Relay permanent tools registered
+- [ ] Relay permanent tools registered at runtime and were client-visible
 - [ ] all three provider origins discovered by Relay Command
-- [ ] all three read probes executed successfully
+- [ ] all three read probes returned semantic success
 - [ ] one real proposal executed against every provider
 - [ ] commit wrappers appeared dynamically
 - [ ] human amendment applied before consent
@@ -404,9 +476,10 @@ Save the output separately and do not confuse it with the fixed-bridge test.
 - [ ] human approved exact scopes
 - [ ] all three providers independently committed
 - [ ] six receipts reached Relay
-- [ ] final audit bundle and digest captured
+- [ ] final audit bundle and digest passed consistency
+- [ ] partial cross-provider state was represented as incomplete and recovered safely
 - [ ] all evidence files explicitly identify ChatGPT as the client
 
-## 15. Gate verdict
+## 16. Gate verdict
 
 Do not merge PR #1 until every checkbox above passes against deployed HTTPS origins.
