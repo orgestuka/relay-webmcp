@@ -11,7 +11,7 @@ function record(report, id, path, pass, detail) {
 }
 
 const report = {
-  schema: "relay.release-provenance-source-gate.v2",
+  schema: "relay.release-provenance-source-gate.v3",
   checkedAt: new Date().toISOString(),
   pass: false,
   checks: [],
@@ -123,14 +123,29 @@ try {
 
   record(
     report,
-    "deployed_release_consistency_smoke",
+    "deployed_root_and_manifest_identity",
     "scripts/deployment-smoke.mjs",
     smoke.includes("releaseManifestCheck")
-      && smoke.includes('headers.get("x-relay-release")')
-      && smoke.includes("relay.release.v1")
+      && smoke.includes("pageHeaderRaw")
+      && smoke.includes("pageHeaderSha")
+      && smoke.includes("manifestHeaderRaw")
+      && smoke.includes("manifestHeaderSha")
+      && smoke.includes("manifestOriginAgentCluster")
+      && smoke.includes("manifest?.schema === \"relay.release.v1\"")
       && smoke.includes("manifest?.app === app")
       && smoke.includes("manifest?.sha === expectedSha"),
-    "The deployed smoke must prove every origin serves the expected application from the exact same commit.",
+    "The deployed smoke must prove the root response and release manifest independently expose one consistent exact release identity.",
+  );
+
+  record(
+    report,
+    "deployed_conflicting_header_rejection",
+    "scripts/deployment-smoke.mjs",
+    smoke.includes("function consistentHeaderValue")
+      && smoke.includes("new Set(values).size === 1")
+      && smoke.includes("consistentHeaderValue(pageHeaderRaw)")
+      && smoke.includes("consistentHeaderValue(manifestHeaderRaw)"),
+    "Repeated identical proxy headers may be normalized, but conflicting release identities must fail the deployed smoke.",
   );
 
   record(
@@ -146,10 +161,12 @@ try {
     "shared_release_sha_validator",
     "apps/relay-command/src/release-provenance.ts",
     releaseProvenance.includes("normalizeReleaseSha")
+      && releaseProvenance.includes("consistentHeaderValue")
+      && releaseProvenance.includes("new Set(values)")
       && releaseProvenance.includes("validReleaseSha")
       && releaseProvenance.includes("assertCompiledReleaseSha")
       && releaseProvenance.includes("non-zero 40-character Git commit"),
-    "Boot and diagnostic code must share one fail-closed definition of a valid release SHA.",
+    "Boot, ChatGPT identity and deployed smoke must share a fail-closed exact SHA model, including conflicting duplicate header rejection.",
   );
 
   record(
@@ -170,11 +187,14 @@ try {
       && releaseIdentity.includes('name: "relay_get_release_identity"')
       && releaseIdentity.includes('fetch("/release.json"')
       && releaseIdentity.includes('response.headers.get("x-relay-release")')
+      && releaseIdentity.includes("consistentHeaderValue(edgeHeaderRaw)")
+      && releaseIdentity.includes("edgeHeaderConsistent")
+      && releaseIdentity.includes("conflicting X-Relay-Release response headers")
       && releaseIdentity.includes("responseOk")
       && releaseIdentity.includes("compiledSha === edgeSha")
       && releaseIdentity.includes("edgeSha === manifestSha")
       && releaseIdentity.includes('schema: "relay.release-identity.v1"'),
-    "ChatGPT must be able to call one read-only tool that proves a successful manifest response, compiled application, trusted edge header and release manifest all identify the same commit.",
+    "ChatGPT must prove a successful manifest response and one non-conflicting release identity across compiled application, trusted edge and manifest body.",
   );
 
   record(
