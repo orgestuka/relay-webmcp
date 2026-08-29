@@ -9,6 +9,7 @@ x-relay-build: &relay-build
     VITE_TRANSIT_ORIGIN: https://${TRANSIT_HOST}
     VITE_SUPPLY_ORIGIN: https://${SUPPLY_HOST}
     VITE_ENABLE_PROOF_RUNNER: "0"
+    VITE_RELEASE_SHA: ${RELAY_RELEASE_SHA}
 
 x-relay-app: &relay-app
   image: relay-webmcp:${RELAY_IMAGE_TAG:-submission}
@@ -69,6 +70,7 @@ services:
       TRANSIT_HOST: ${TRANSIT_HOST}
       SUPPLY_HOST: ${SUPPLY_HOST}
       ACME_EMAIL: ${ACME_EMAIL}
+      RELAY_RELEASE_SHA: ${RELAY_RELEASE_SHA}
     ports:
       - "80:80"
       - "443:443"
