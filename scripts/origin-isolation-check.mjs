@@ -25,13 +25,25 @@ try {
   record(checks, "production_edge_header", "deploy/Caddyfile", caddyPass, "Caddy must set Origin-Agent-Cluster: ?1 for every Relay hostname.");
   if (!caddyPass) blockers.push("Caddy does not enforce Origin-Agent-Cluster: ?1.");
 
+  const nginx = await source("deploy/nginx.conf");
+  const nginxHeaderCount = (nginx.match(/add_header Origin-Agent-Cluster "\?1" always;/g) ?? []).length;
+  const nginxPass = nginxHeaderCount >= 4;
+  record(
+    checks,
+    "application_server_headers",
+    "deploy/nginx.conf",
+    nginxPass,
+    "Nginx must preserve Origin-Agent-Cluster: ?1 at server scope and inside every location that declares its own headers.",
+  );
+  if (!nginxPass) blockers.push(`Nginx exposes only ${nginxHeaderCount} explicit origin-isolation headers; expected at least 4.`);
+
   for (const path of viteConfigs) {
     const config = await source(path);
     const headerPass = config.includes('"Origin-Agent-Cluster": "?1"');
-    const serverPass = /server\s*:\s*\{[\s\S]*?headers\s*:\s*originIsolationHeaders/.test(config);
-    const previewPass = /preview\s*:\s*\{[\s\S]*?headers\s*:\s*originIsolationHeaders/.test(config);
+    const serverPass = /server\s*:\s*\{[\s\S]*?headers\s*:\s*webMcpHeaders/.test(config);
+    const previewPass = /preview\s*:\s*\{[\s\S]*?headers\s*:\s*webMcpHeaders/.test(config);
     const pass = headerPass && serverPass && previewPass;
-    record(checks, `vite_origin_isolation_${path.split("/")[1]}`, path, pass, "Vite dev and preview must both serve the origin-keying header.");
+    record(checks, `vite_origin_isolation_${path.split("/")[1]}`, path, pass, "Vite dev and preview must both serve the origin-keying header through the shared WebMCP header set.");
     if (!pass) blockers.push(`${path} does not enforce origin isolation in both dev and preview.`);
   }
 
@@ -51,7 +63,7 @@ try {
   const diagnosticPass = diagnostics.includes("originIsolationPass")
     && diagnostics.includes("originAgentClusterSupported")
     && diagnostics.includes('requiredHeader: "Origin-Agent-Cluster: ?1"')
-    && /const overallPass = originIsolationPass/.test(diagnostics);
+    && diagnostics.includes("&& originIsolationPass");
   record(checks, "machine_readable_origin_diagnostic", "apps/relay-command/src/release-diagnostics.ts", diagnosticPass, "The ChatGPT diagnostic must expose and enforce the runtime origin-isolation result.");
   if (!diagnosticPass) blockers.push("relay_diagnose_webmcp does not enforce origin isolation.");
 
@@ -65,7 +77,7 @@ try {
 }
 
 const report = {
-  schema: "relay.origin-isolation-source-gate.v1",
+  schema: "relay.origin-isolation-source-gate.v2",
   checkedAt: new Date().toISOString(),
   specificationInvariant: "WebMCP registerTool/getTools reject non-origin-keyed non-file documents with SecurityError.",
   requiredResponseHeader: "Origin-Agent-Cluster: ?1",
