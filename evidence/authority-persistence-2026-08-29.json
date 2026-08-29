@@ -1,0 +1,25 @@
+{
+  "schema": "relay.authority-persistence.v1",
+  "sourceBranch": "build/pact-vertical-slice",
+  "sourceSha": "0b99b2757525c59c512cdc5f742bbe44558de8eb",
+  "executedAt": "2026-08-29T10:45:00Z",
+  "environment": {
+    "node": "v22.16.0",
+    "typescript": "5.8.3"
+  },
+  "commands": [
+    "tsc -p tsconfig.json --noEmit",
+    "node --experimental-strip-types authority-check.ts"
+  ],
+  "sourceMode": "The exact current WebMCP runtime input-guard implementation and authority-guard implementation were reconstructed from the connected private branch with minimal module stubs for strict local validation.",
+  "result": "pass",
+  "checks": {
+    "strictTypecheck": true,
+    "initialAuthority": 5000,
+    "humanConfirmedAuthority": 3000,
+    "staleRecoveryAgentRequest": 5000,
+    "effectiveRecoveredAuthority": 3000,
+    "authorityIncreaseRejected": true
+  },
+  "boundary": "This proves the release guard's TypeScript contract and pure authority invariant. It is not a clean full checkout, Vite build, deployed browser run or actual ChatGPT evidence."
+}
