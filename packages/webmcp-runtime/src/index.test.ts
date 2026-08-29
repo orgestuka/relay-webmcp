@@ -1,21 +1,40 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { DynamicTool, toolOutput } from "./index";
+import {
+  DynamicTool,
+  executeLocalRegisteredTool,
+  getLocalRegisteredToolNames,
+  registerTool,
+  toolOutput,
+} from "./index";
 
 const originalDocument = globalThis.document;
+const originalNavigator = globalThis.navigator;
 
 type RegistrationOptions = { signal?: AbortSignal; exposedTo?: string[] };
 
-function installContext(registerTool: (tool: unknown, options?: RegistrationOptions) => Promise<void>): void {
+function installContext(registerToolImpl: (tool: unknown, options?: RegistrationOptions) => Promise<void>): void {
   Object.defineProperty(globalThis, "document", {
     configurable: true,
-    value: { modelContext: { registerTool } },
+    value: { modelContext: { registerTool: registerToolImpl } },
   });
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: {},
+  });
+}
+
+async function flushAbort(): Promise<void> {
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 1));
 }
 
 afterEach(() => {
   Object.defineProperty(globalThis, "document", {
     configurable: true,
     value: originalDocument,
+  });
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: originalNavigator,
   });
 });
 
@@ -24,6 +43,40 @@ const definition = {
   description: "Exercise dynamic registration lifecycle.",
   execute: () => ({ ok: true }),
 };
+
+describe("local registration evidence", () => {
+  it("executes a registered local read without recursively calling executeTool", async () => {
+    installContext(async () => {});
+    const name = "relay_test_local_read";
+    const controller = await registerTool({
+      name,
+      description: "Return a deterministic local snapshot.",
+      execute: (input: { marker: string }) => ({ ok: true, marker: input.marker }),
+    });
+
+    expect(getLocalRegisteredToolNames()).toContain(name);
+    await expect(executeLocalRegisteredTool(name, { marker: "audit" }))
+      .resolves.toEqual({ ok: true, marker: "audit" });
+
+    controller?.abort();
+    expect(getLocalRegisteredToolNames()).not.toContain(name);
+    await expect(executeLocalRegisteredTool(name, {})).rejects.toThrow(/not currently registered/);
+  });
+
+  it("removes only the registration instance that was aborted", async () => {
+    installContext(async () => {});
+    const name = "relay_test_replaced_registration";
+    const first = await registerTool({ name, description: "first", execute: () => "first" });
+    const second = await registerTool({ name, description: "second", execute: () => "second" });
+
+    first?.abort();
+    expect(getLocalRegisteredToolNames()).toContain(name);
+    await expect(executeLocalRegisteredTool(name, {})).resolves.toBe("second");
+
+    second?.abort();
+    expect(getLocalRegisteredToolNames()).not.toContain(name);
+  });
+});
 
 describe("DynamicTool", () => {
   it("coalesces concurrent enable calls into one registration", async () => {
@@ -37,6 +90,11 @@ describe("DynamicTool", () => {
 
     expect(registrations).toBe(1);
     expect(tool.active).toBe(true);
+    expect(getLocalRegisteredToolNames()).toContain(definition.name);
+
+    tool.disable();
+    await flushAbort();
+    expect(getLocalRegisteredToolNames()).not.toContain(definition.name);
   });
 
   it("fails closed when disabled while registration is still pending", async () => {
@@ -53,10 +111,11 @@ describe("DynamicTool", () => {
     tool.disable();
     release();
     await enabling;
-    await new Promise((resolve) => globalThis.setTimeout(resolve, 1));
+    await flushAbort();
 
     expect(tool.active).toBe(false);
     expect(registrationSignal?.aborted).toBe(true);
+    expect(getLocalRegisteredToolNames()).not.toContain(definition.name);
   });
 
   it("aborts an active registration on disable", async () => {
@@ -70,10 +129,11 @@ describe("DynamicTool", () => {
     expect(tool.active).toBe(true);
 
     tool.disable();
-    await new Promise((resolve) => globalThis.setTimeout(resolve, 1));
+    await flushAbort();
 
     expect(tool.active).toBe(false);
     expect(registrationSignal?.aborted).toBe(true);
+    expect(getLocalRegisteredToolNames()).not.toContain(definition.name);
   });
 
   it("clears a failed registration so a later retry can succeed", async () => {
@@ -89,6 +149,9 @@ describe("DynamicTool", () => {
 
     expect(registrations).toBe(2);
     expect(tool.active).toBe(true);
+
+    tool.disable();
+    await flushAbort();
   });
 });
 
