@@ -7,15 +7,22 @@ Evidence is separated by execution environment. Never upgrade one evidence class
 - `local-core-smoke-2026-08-29.json`
 - `release-audit-2026-08-29.json`
 - `release-modules-typecheck-2026-08-29.json`
+- `origin-isolation-hardening-2026-08-29.json`
+- `north-reserve-post-commit-regression-2026-08-29.json`
 
 The core smoke and hostile authorization audit prove pure PACT, policy and dynamic-capability properties against source reconstructed from the connected private branch.
 
 The release-module evidence proves strict TypeScript compatibility and local registration-ledger behavior for the current WebMCP runtime and release diagnostics.
 
+The origin-isolation evidence proves that source configuration now enforces the mandatory `Origin-Agent-Cluster: ?1` invariant across local Vite servers, previews, the production Caddy edge, Relay boot, machine-readable diagnostics and deployed smoke tests.
+
+The North reserve regression evidence proves that a committed North Shelter reservation is not subtracted twice after live provider state already reflects the mutation.
+
 ## Deterministic harness evidence
 
 - `release-diagnostics-semantic-probe-2026-08-29.json`
 - `compatibility-bridge-smoke-2026-08-29.json`
+- provider atomicity and stale-handle drill evidence committed on the build branch
 
 The diagnostic semantic probe proves that a provider tool counts as executable only when it returns a real semantic `{ "ok": true }` result. Listed tools that throw, return null, return malformed JSON or return `{ "ok": false }` fail closed.
 
@@ -33,9 +40,10 @@ These local and harness files do **not** prove:
 - a clean full checkout
 - npm installation from the repository
 - Vite production builds
-- Docker or Caddy deployment
+- Docker or Caddy runtime deployment
 - four deployed HTTPS origins
-- browser-level provider mutation
+- the actual response header on those origins
+- browser-level provider mutation in ChatGPT
 - actual ChatGPT compatibility
 
 ## GitHub Actions evidence
@@ -60,6 +68,8 @@ evidence/deployment/02-dns.json
 evidence/deployment/03-https-smoke.json
 ```
 
+The HTTPS smoke must show `Origin-Agent-Cluster: ?1` on all four root responses.
+
 ## Actual ChatGPT evidence
 
 Create only from ChatGPT's supported built-in browser:
@@ -81,5 +91,6 @@ Each file must preserve raw tool output and identify:
 - ChatGPT desktop/browser build when visible
 - branch commit SHA
 - default fixed-bridge mode or `?direct=1`
+- `environment.originIsolationPass`
 
 Ordinary Chrome, Playwright, deterministic ModelContext doubles and Relay's optional proof console are harness evidence and must never be described as actual ChatGPT evidence.

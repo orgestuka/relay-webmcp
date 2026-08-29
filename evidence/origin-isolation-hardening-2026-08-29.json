@@ -1,0 +1,41 @@
+{
+  "schema": "relay.origin-isolation-hardening.v1",
+  "sourceCommit": "5622bf6e411792e0cf336f9ce3c558c7be226381",
+  "executedAt": "2026-08-29T10:25:18.311Z",
+  "environment": {
+    "node": "v22.16.0",
+    "typescript": "5.8.3"
+  },
+  "commands": [
+    "node scripts/origin-isolation-check.mjs",
+    "tsc -p /tmp/relay-oac-ts/tsconfig.json --noEmit",
+    "tsc -p /tmp/relay-vite-ts/tsconfig.json --noEmit"
+  ],
+  "result": "pass",
+  "checks": {
+    "productionCaddyHeaderConfigured": true,
+    "relayCommandViteDevHeaderConfigured": true,
+    "shelterGridViteDevHeaderConfigured": true,
+    "transitOpsViteDevHeaderConfigured": true,
+    "supplyHubViteDevHeaderConfigured": true,
+    "allVitePreviewHeadersConfigured": true,
+    "typescript58WindowAugmentation": true,
+    "commandFailsClosedWhenExplicitlyNotOriginKeyed": true,
+    "diagnosticEnforcesOriginIsolation": true,
+    "deployedSmokeRequiresExactHeader": true,
+    "dockerBuildCopiesDeploySourcesBeforeVerify": true
+  },
+  "requiredResponseHeader": "Origin-Agent-Cluster: ?1",
+  "specificationConsequence": "WebMCP registerTool/getTools reject non-origin-keyed non-file documents with SecurityError.",
+  "sourceBlobs": {
+    "globals.d.ts": "86f15f9ad565dcfd00347d9cee62bb7532c6b82f",
+    "deploy/Caddyfile": "58d62a8c6cdf35afd01213285e1c23bd15dbf01b",
+    "deploy/Dockerfile": "3567f4516d166ca63d057ee612a9c0fedc2c241c",
+    "vite.config.ts shared": "464e8c92603ae62dc4e701f45b659a2491e91675",
+    "apps/relay-command/src/bootstrap.ts": "86bd8983fb7fd44d194fad114870da167b02dab6",
+    "apps/relay-command/src/release-diagnostics.ts": "4fd1c43de5f3355d1c9c632a41b8766c1fa8ffd5",
+    "scripts/deployment-smoke.mjs": "b76aaa5842a2eaa4e41d6fdeb44c12a5326b331c",
+    "scripts/origin-isolation-check.mjs": "c149c1a36c3310663e273b2b192dac9de31afaf8"
+  },
+  "boundary": "This proves source configuration and TypeScript compatibility for the origin-isolation hardening. It does not prove Caddy syntax at runtime, an actual HTTPS response header, a full clean checkout build, or ChatGPT WebMCP compatibility. Those remain external release gates."
+}
