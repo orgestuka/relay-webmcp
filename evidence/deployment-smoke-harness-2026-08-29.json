@@ -1,0 +1,77 @@
+{
+  "schema": "relay.deployment-smoke-harness.v1",
+  "sourceCommit": "dc4d61ce352c40c2c25062f6aee472945a82420b",
+  "executedAt": "2026-08-29T11:39:44.923Z",
+  "environment": {
+    "node": "v22.16.0",
+    "transport": "local self-signed HTTPS server on port 443",
+    "hostnames": [
+      "relay.localhost",
+      "shelter.localhost",
+      "transit.localhost",
+      "supply.localhost"
+    ],
+    "tlsVerification": "disabled only for the deterministic self-signed harness"
+  },
+  "command": "NODE_TLS_REJECT_UNAUTHORIZED=0 node scripts/deployment-smoke.mjs /tmp/relay-deploy-smoke-harness/.env.deploy",
+  "result": "pass",
+  "releaseSha": "1234567890abcdef1234567890abcdef12345678",
+  "origins": {
+    "relay-command": {
+      "pass": true,
+      "checks": [
+        "healthz",
+        "HTTPS page",
+        "application identity",
+        "Origin-Agent-Cluster: ?1",
+        "strict CSP",
+        "exact provider tools Permissions-Policy",
+        "one-year HSTS",
+        "X-Relay-Release",
+        "release.json application and SHA binding",
+        "compiled provider origins",
+        "no localhost development endpoints"
+      ]
+    },
+    "shelter-grid": {
+      "pass": true,
+      "checks": [
+        "healthz",
+        "HTTPS page",
+        "provider frame-ancestor restriction",
+        "tools=(self)",
+        "release header and manifest consistency",
+        "compiled Relay origin"
+      ]
+    },
+    "transit-ops": {
+      "pass": true,
+      "checks": [
+        "healthz",
+        "HTTPS page",
+        "provider frame-ancestor restriction",
+        "tools=(self)",
+        "release header and manifest consistency",
+        "compiled Relay origin"
+      ]
+    },
+    "supply-hub": {
+      "pass": true,
+      "checks": [
+        "healthz",
+        "HTTPS page",
+        "provider frame-ancestor restriction",
+        "tools=(self)",
+        "release header and manifest consistency",
+        "compiled Relay origin"
+      ]
+    }
+  },
+  "crossOriginInvariants": {
+    "allFourOriginsPassed": true,
+    "allFourOriginsServedSameReleaseSha": true,
+    "everyManifestMatchedExpectedApplication": true,
+    "securityHeadersPassedOnEveryOrigin": true
+  },
+  "boundary": "This is deterministic smoke-script evidence against a local HTTPS harness. It does not prove Caddy syntax/runtime, public DNS, trusted certificates, deployed Docker images or actual ChatGPT WebMCP execution."
+}
