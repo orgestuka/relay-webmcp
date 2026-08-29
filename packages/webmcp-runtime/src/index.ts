@@ -69,7 +69,7 @@ export async function executeLocalRegisteredTool<TInput extends object = Record<
   if (!registration || registration.controller.signal.aborted) {
     throw new Error(`Local WebMCP tool ${name} is not currently registered.`);
   }
-  return registration.definition.execute(input, options);
+  return registration.definition.execute(input as Record<string, unknown>, options);
 }
 
 function deferredAbort(controller: AbortController | null): void {
