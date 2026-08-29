@@ -73,6 +73,7 @@ async function boot(): Promise<void> {
   if (!directOnly) await import("./compatibility-bridge");
 
   await import("./release-diagnostics");
+  await import("./release-identity");
   await import("./capability-surface");
   await import("./fault-injection");
   await import("./scenario-reset");
