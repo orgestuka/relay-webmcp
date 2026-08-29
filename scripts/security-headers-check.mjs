@@ -17,8 +17,12 @@ function between(sourceText, start, end) {
   return endIndex < 0 ? sourceText.slice(startIndex) : sourceText.slice(startIndex, endIndex);
 }
 
+function count(sourceText, pattern) {
+  return (sourceText.match(pattern) ?? []).length;
+}
+
 const report = {
-  schema: "relay.security-headers-source-gate.v1",
+  schema: "relay.security-headers-source-gate.v2",
   checkedAt: new Date().toISOString(),
   pass: false,
   checks: [],
@@ -104,10 +108,43 @@ try {
 
   check(
     report,
-    "single_permissions_policy_owner",
+    "single_dynamic_policy_owner",
     "deploy/nginx.conf",
     !nginx.includes("Permissions-Policy") && !nginx.includes("Content-Security-Policy"),
     "Only Caddy may emit dynamic origin-aware CSP and Permissions-Policy headers; duplicate inner policies can intersect and break delegation.",
+  );
+
+  const nginxOacCount = count(nginx, /add_header Origin-Agent-Cluster "\?1" always;/g);
+  const nginxNosniffCount = count(nginx, /add_header X-Content-Type-Options "nosniff" always;/g);
+  const nginxReferrerCount = count(nginx, /add_header Referrer-Policy "no-referrer" always;/g);
+  check(
+    report,
+    "nginx_origin_isolation_inheritance",
+    "deploy/nginx.conf",
+    nginxOacCount >= 4,
+    "Nginx add_header inheritance resets inside locations; the origin-isolation header must be repeated at server scope and in every header-owning location.",
+  );
+  check(
+    report,
+    "nginx_nosniff_inheritance",
+    "deploy/nginx.conf",
+    nginxNosniffCount >= 4,
+    "nosniff must survive every Nginx location that declares Cache-Control or Content-Type.",
+  );
+  check(
+    report,
+    "nginx_referrer_policy_inheritance",
+    "deploy/nginx.conf",
+    nginxReferrerCount >= 4,
+    "The referrer policy must survive every Nginx location that declares its own headers.",
+  );
+  check(
+    report,
+    "nginx_cache_partition",
+    "deploy/nginx.conf",
+    nginx.includes('Cache-Control "no-store" always;')
+      && nginx.includes('Cache-Control "public, max-age=31536000, immutable" always;'),
+    "Mutable HTML and health responses must be no-store while hashed assets remain immutable.",
   );
 
   check(
