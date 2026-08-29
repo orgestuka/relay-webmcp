@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertCompiledReleaseSha,
+  consistentHeaderValue,
   normalizeReleaseSha,
   validReleaseSha,
 } from "./release-provenance";
@@ -12,6 +13,12 @@ describe("compiled release provenance", () => {
     expect(normalizeReleaseSha(`  ${sha.toUpperCase()}  `)).toBe(sha);
     expect(validReleaseSha(sha)).toBe(true);
     expect(assertCompiledReleaseSha(sha, { localDevelopment: false })).toBe(sha);
+  });
+
+  it("accepts duplicate identical edge headers but rejects conflicting values", () => {
+    expect(consistentHeaderValue(`${sha}, ${sha.toUpperCase()}`)).toBe(sha);
+    expect(consistentHeaderValue(`${sha}, ${"a".repeat(40)}`)).toBeNull();
+    expect(consistentHeaderValue(null)).toBeNull();
   });
 
   it("allows an omitted SHA only for local development", () => {
