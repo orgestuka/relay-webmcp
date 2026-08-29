@@ -6,264 +6,184 @@ Branch: `build/pact-vertical-slice`
 
 Integration path: **draft PR #1 only**
 
-`main` must remain frozen until every external gate is green.
-
 # Current recommendation
 
 ## **DO NOT MERGE**
 
-The internal protocol and release hardening are materially stronger, but the decisive environment gates remain unproven:
-
-- clean full-checkout verification
-- production container build
-- four real HTTPS origins
-- deployed origin-isolation smoke
-- actual ChatGPT built-in-browser tool discovery and execution
-- full stale → recover → approve → commit rehearsal
-- public video
+The GitHub-side implementation and release contract are now hardened, but the exact current branch has not yet passed a clean machine execution. The next blocker is not another speculative code feature. It is generating the real npm lockfile and executing the branch on a human-controlled computer.
 
 ## Status vocabulary
 
 | Status | Meaning |
 | --- | --- |
-| **PASS** | The exact gate ran and machine-readable evidence exists. |
-| **PARTIAL** | A lower-level invariant passed, but the complete release gate did not run. |
-| **BLOCKED** | Required credentials, hostnames or environment access are absent. |
-| **NOT RUN** | The gate is runnable later but has not been executed. |
+| **PASS** | The exact gate ran against the identified commit and machine-readable evidence exists. |
+| **SOURCE-READY** | The implementation and fail-closed gate exist, but the gate has not run on a clean machine. |
+| **BLOCKED** | A required human-controlled environment or credential is absent. |
 | **FAIL** | The exact gate ran and failed. |
 
-## Evidence classes
+## What is source-ready
 
-| Evidence class | Meaning |
-| --- | --- |
-| `LOCAL_RECONSTRUCTED_CORE` | Current source modules were reconstructed from the connected private branch and executed locally. Not a full checkout. |
-| `REPOSITORY_CODE_REVIEW` | Static inspection only. |
-| `GITHUB_ACTIONS_INFRA_FAILURE` | GitHub created a failed job with zero steps and no logs. This is not code evidence. |
-| `CLEAN_CHECKOUT` | Fresh clone, dependency install, verification and production builds. |
-| `DEPLOYED_FOUR_ORIGIN` | Evidence from four real HTTPS origins. |
-| `ACTUAL_CHATGPT` | Raw evidence produced by ChatGPT's supported built-in browser. |
-| `HARNESS` | Playwright, ordinary Chrome or Relay proof-runner evidence. Useful but insufficient for ChatGPT compatibility. |
+The branch now contains source controls for:
 
-# Release sequence
+- exact PACT scope, signature, provider-origin, state-version, expiry and authority verification
+- registration-time and invocation-time human approval gating for top-level commit wrappers
+- bounded initial bridge readiness before diagnostics become callable
+- stale capability teardown and retained human authority through recovery
+- exact final plan, approval scope and receipt audit closure
+- compiled, edge-header and `/release.json` commit identity equality
+- production boot rejection of a missing or placeholder release SHA
+- `Origin-Agent-Cluster: ?1` across Vite, Nginx and Caddy
+- origin-scoped CSP and WebMCP Permissions-Policy
+- read-only application containers and immutable hashed assets
+- dependency-free script syntax and static release-surface gates
+- one source release gate and one full deployment gate
+
+These are **SOURCE-READY**, not runtime passes.
+
+## Current hard boundary
+
+| Gate | Status | Why |
+| --- | --- | --- |
+| Committed `package-lock.json` | **BLOCKED** | Must be generated from the real npm registry with Node 22 and npm 10.9.2. It must not be fabricated through GitHub. |
+| Clean `npm ci` | **BLOCKED** | Requires the real lockfile and local filesystem. |
+| Full `npm run verify` | **BLOCKED** | Requires installed dependencies and actual execution. |
+| Four Vite production builds | **BLOCKED** | Included in verification but not executed on the exact head. |
+| Docker image and Compose stack | **BLOCKED** | Requires Docker Engine/Desktop. |
+| Four public HTTPS origins and DNS | **BLOCKED** | Requires domain and infrastructure control. |
+| Actual ChatGPT built-in-browser proof | **BLOCKED** | Requires the deployed origins and a human-operated ChatGPT browser context. |
+| Rehearsal and video | **BLOCKED** | Must use the validated deployment. |
+
+## Exact remaining sequence
 
 ```text
-clean checkout passes
-→ production container build passes
-→ deployed four-origin smoke passes
-→ actual ChatGPT browser test passes
-→ complete demo rehearsed repeatedly
-→ final video recorded
-→ README and reproduction guide frozen
-→ repository visibility requirement satisfied
-→ PR #1 merged
-→ submission tag created
+generate and inspect package-lock.json
+→ npm ci
+→ npm run verify
+→ commit lockfile
+→ clean npm run gate:source
+→ configure four DNS names
+→ clean npm run gate:release
+→ relay_get_release_identity
+→ relay_diagnose_webmcp with read probes
+→ canonical ChatGPT transaction
+→ stale/recovery ChatGPT transaction
+→ partial-commit recovery drill
+→ repeated rehearsals
+→ public video
+→ visibility requirement
+→ PR #1 merge
+→ validate merged SHA
+→ submission tag
 ```
 
-# Internal release audit
+## Human handoff command path
 
-| Gate | Status | Exact command or action | Evidence location | Evidence class | Remaining blocker |
-| --- | --- | --- | --- | --- | --- |
-| PACT signature and exact-scope verification | **PASS** | `node --experimental-strip-types scripts/integrity-smoke.ts` | `evidence/local-core-smoke-2026-08-29.json` | `LOCAL_RECONSTRUCTED_CORE` | Repeat from clean checkout. |
-| Canonical €2,733 policy plan | **PASS** | `node --experimental-strip-types scripts/release-audit.ts` | `evidence/release-audit-2026-08-29.json` | `LOCAL_RECONSTRUCTED_CORE` | Repeat after current source changes. |
-| Tampered approval rejected | **PASS** | `npm run audit:release` | release-audit evidence | `LOCAL_RECONSTRUCTED_CORE` | Clean-checkout rerun. |
-| Expired token rejected | **PASS** | `npm run audit:release` | release-audit evidence | `LOCAL_RECONSTRUCTED_CORE` | Clean-checkout rerun. |
-| Wrong session rejected | **PASS** | `npm run audit:release` | release-audit evidence | `LOCAL_RECONSTRUCTED_CORE` | Clean-checkout rerun. |
-| Wrong provider origin rejected | **PASS** | `npm run audit:release` | release-audit evidence | `LOCAL_RECONSTRUCTED_CORE` | Clean-checkout rerun. |
-| Wrong provider version rejected | **PASS** | `npm run audit:release` | release-audit evidence | `LOCAL_RECONSTRUCTED_CORE` | Clean-checkout rerun. |
-| Aggregate authority escalation rejected | **PASS** | `npm run audit:release` | release-audit evidence | `LOCAL_RECONSTRUCTED_CORE` | Clean-checkout rerun. |
-| Incomplete same-origin batch rejected | **PASS** | `npm run audit:release` | release-audit evidence | `LOCAL_RECONSTRUCTED_CORE` | Provider before/after capacity still needs deployed proof. |
-| Human authority persists through stale restaging | **PASS** | strict TypeScript check plus `node --experimental-strip-types authority-check.ts` | `evidence/authority-persistence-2026-08-29.json` | `LOCAL_RECONSTRUCTED_CORE` | Repeat through the actual UI and ChatGPT. |
-| Authority cannot increase after human tightening | **PASS** | authority persistence check | same evidence | `LOCAL_RECONSTRUCTED_CORE` | Actual UI proof pending. |
-| Node release scripts have type definitions | **PARTIAL** | `npm run typecheck` | `package.json` pins `@types/node` | `REPOSITORY_CODE_REVIEW` | Full clean typecheck not run here. |
-| WebMCP diagnostics reject semantic `{ok:false}` | **PARTIAL** | `npm test` | diagnostics source and tests | `REPOSITORY_CODE_REVIEW` | Clean test suite and actual browser probe pending. |
-| Dynamic tool registration/revocation is race-safe | **PARTIAL** | `npm test` | runtime lifecycle tests | `REPOSITORY_CODE_REVIEW` | Clean test suite pending. |
-| Provider local batch is atomic | **PARTIAL** | `npm test` | provider-runtime atomicity tests | `REPOSITORY_CODE_REVIEW` | Deployed before/after inventory proof pending. |
-| North Shelter reserve is not double-subtracted after commit | **PARTIAL** | `npm test` | simulation regression tests | `REPOSITORY_CODE_REVIEW` | Full browser commit path pending. |
-| Audit bundle binds accepted approval, receipts, plan and mesh | **PARTIAL** | `relay_get_audit_bundle` after commit | release diagnostics source | `REPOSITORY_CODE_REVIEW` | Actual committed browser output pending. |
-| Origin-keyed agent cluster enforced | **PARTIAL** | `npm run check:origin-isolation` | Vite headers, Caddy header, bootstrap guard | `REPOSITORY_CODE_REVIEW` | Deployed header proof pending. |
+Follow [`codex-local-release.md`](codex-local-release.md).
 
-# Clean checkout gate
-
-Run when the repository is available locally:
+The first machine phase is:
 
 ```bash
-git clone <REPOSITORY_URL>
-cd relay-webmcp
 git checkout build/pact-vertical-slice
-
-node --version
-npm --version
-npm install --no-audit --no-fund
+git pull --ff-only origin build/pact-vertical-slice
+nvm use 22
+npm install --global npm@10.9.2 --no-audit --no-fund
+npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+rm -rf node_modules
+npm ci --no-audit --no-fund
 npm run verify
-npm run check:origin-isolation
 ```
 
-Required results:
-
-| Gate | Status now | Required evidence |
-| --- | --- | --- |
-| Fresh dependency install | **NOT RUN** | terminal transcript |
-| Strict TypeScript check | **NOT RUN** | successful command output |
-| Dependency-free integrity smoke | **NOT RUN** on current full checkout | raw JSON output |
-| Hostile release audit | **NOT RUN** on current full checkout | raw JSON output including authority persistence |
-| Vitest suite | **NOT RUN** | passing test summary |
-| All four Vite production builds | **NOT RUN** | build output |
-| Origin-isolation static check | **NOT RUN** | raw JSON or terminal output |
-
-A lockfile is not currently proven in this environment. Before release, generate and commit `package-lock.json` from Node 22 and npm 10, then prefer:
+After the lockfile is reviewed and committed from a green working copy:
 
 ```bash
-npm ci
+npm run gate:source
 ```
 
-# GitHub Actions status
+The source gate must produce:
 
-| Gate | Status | Evidence | Interpretation |
-| --- | --- | --- | --- |
-| Hosted workflow execution | **BLOCKED** | latest failed job has `steps: []` and no logs | Runner provisioning failed before checkout. Do not describe this as a test failure or test pass. |
-
-Do not spend release time repeatedly rerunning the same hosted job unless account-level Actions provisioning changes.
-
-# Four-origin deployment gate
-
-Required inputs:
-
-```text
-RELAY_HOST
-SHELTER_HOST
-TRANSIT_HOST
-SUPPLY_HOST
-ACME_EMAIL
-DNS access
-SSH or equivalent Docker access
+```json
+{
+  "pass": true
+}
 ```
 
-Commands:
+under ignored `.relay-artifacts/release/`.
+
+## Deployment gate
+
+Follow [`production-operator-runbook.md`](production-operator-runbook.md).
+
+Required deployment identity:
+
+```env
+RELAY_RELEASE_SHA=<exact output of git rev-parse HEAD>
+```
+
+Full command:
 
 ```bash
-cp .env.deploy.example .env.deploy
-# replace every placeholder
-
-npm run deploy:check
-npm run deploy:check:dns
-
-docker compose --env-file .env.deploy build --pull
-docker compose --env-file .env.deploy up -d
-docker compose --env-file .env.deploy ps
-
-npm run deploy:smoke
+npm run gate:release -- --env .env.deploy
 ```
 
-| Gate | Status | Evidence target | Remaining blocker |
-| --- | --- | --- | --- |
-| Four distinct hostnames configured | **BLOCKED** | `evidence/deployment/01-preflight.json` | Hostnames absent. |
-| DNS resolves to deployment host | **BLOCKED** | `evidence/deployment/02-dns.json` | DNS absent. |
-| Production image builds | **BLOCKED** | Docker build transcript | No Docker host access here. |
-| All four services become healthy | **BLOCKED** | `docker compose ps` | Same blocker. |
-| HTTPS roots load | **BLOCKED** | `evidence/deployment/03-https-smoke.json` | Deployment absent. |
-| Compiled origins contain no localhost fallback | **BLOCKED** | deployment smoke asset inspection | Deployment absent. |
-| `Origin-Agent-Cluster: ?1` on all four roots | **BLOCKED** | deployment smoke header checks | Deployment absent. |
-
-# Actual ChatGPT WebMCP gate
-
-Primary procedure:
-
-- [`chatgpt-validation.md`](chatgpt-validation.md)
-
-Required raw evidence:
+The deployed smoke must prove all four origins share:
 
 ```text
-evidence/chatgpt/01-initial-diagnostic.json
-evidence/chatgpt/02-provider-proposal-probes.json
-evidence/chatgpt/03-capability-created.json
-evidence/chatgpt/04-capability-torn-down.json
-evidence/chatgpt/05-full-path.json
-evidence/chatgpt/06-final-audit-bundle.json
-evidence/chatgpt/07-partial-commit-recovery.json
+exact release SHA
+valid release.json manifest
+X-Relay-Release header
+Origin-Agent-Cluster: ?1
+correct CSP
+correct tools Permissions-Policy
+no localhost origins in compiled assets
+healthy HTTPS application
 ```
 
-| Gate | Status | Required proof |
-| --- | --- | --- |
-| Relay tools register and are visible to ChatGPT | **BLOCKED** | raw `relay_diagnose_webmcp` result |
-| All three provider origins are discovered | **BLOCKED** | diagnostic provider entries |
-| All three read tools execute semantically | **BLOCKED** | each `readProbe.result.ok === true` |
-| One real proposal executes against every provider | **BLOCKED** | raw proposal outputs |
-| Commit wrappers appear after proposals | **BLOCKED** | before/after diagnostic tool lists |
-| Initial plan stages at €5,000 authority | **BLOCKED** | raw `relay_get_plan` |
-| Human visibly tightens €5,000 → €3,000 | **BLOCKED** | UI plus raw plan revision |
-| €3,000 cap survives stale recovery | **BLOCKED** | recovered `relay_get_plan` despite agent request for €5,000 |
-| Stale approval and commit capabilities disappear | **BLOCKED** | teardown diagnostic |
-| Agent replaces only invalidated shelter work | **BLOCKED** | recovered proposal sequence |
-| Providers independently commit | **BLOCKED** | three commit outputs |
-| Six unique receipts reach Relay | **BLOCKED** | final plan output |
-| Final audit digest passes consistency | **BLOCKED** | raw audit bundle |
-| Partial cross-provider completion is represented and recovered | **BLOCKED** | dedicated recovery evidence |
+## Actual ChatGPT gate
 
-Do not claim ChatGPT compatibility from Playwright, ordinary Chrome or `?proof=1`.
+Follow [`chatgpt-validation.md`](chatgpt-validation.md).
 
-# Demo lock
-
-Final script:
-
-- [`demo-script.md`](demo-script.md)
-
-The locked sequence is:
+Required first calls:
 
 ```text
-objective across three providers
-→ agent discovers and stages at €5,000 authority
-→ human tightens to €3,000
-→ approval call suspends
-→ shelter version changes
-→ stale capabilities disappear
-→ agent replaces only shelter work under retained €3,000 cap
-→ human approves exact recovered scopes
-→ providers verify and commit
-→ six receipts and audit digest appear
+relay_get_release_identity
+relay_diagnose_webmcp { executeReadProbes: true }
 ```
 
-| Demo gate | Status | Remaining blocker |
-| --- | --- | --- |
-| Deterministic reset | **PARTIAL** | Code complete; deployed proof pending. |
-| Genuine human authority amendment | **PARTIAL** | Prompt and guard fixed; actual UI recording pending. |
-| Capability disappearance legible | **PARTIAL** | UI and diagnostics complete; rehearsal pending. |
-| 2:40–2:50 rehearsal | **BLOCKED** | Deployment and actual ChatGPT required. |
-| Three consecutive successful rehearsals | **BLOCKED** | Same blocker. |
-| Three consecutive stale/recovery rehearsals | **BLOCKED** | Same blocker. |
-| Public video under three minutes | **BLOCKED** | Record only after green rehearsals. |
+Then prove:
 
-# Freeze and release
+- read and proposal tools are available before consent
+- consequential commit wrappers are absent before consent
+- a human visibly lowers authority from €5,000 to €3,000
+- a provider mutation makes the plan stale
+- stale commit capability disappears
+- recovery does not restore the old €5,000 ceiling
+- fresh exact human approval creates only the required commit wrappers
+- every provider independently verifies and commits
+- six unique receipts close the exact final plan
+- audit bundle v2 returns `ok: true`
+- partial cross-provider completion is represented honestly and recovered through fresh state and consent
 
-| Action | Status | Rule |
-| --- | --- | --- |
-| Keep `main` frozen | **PASS** | No direct commits. |
-| Keep PR #1 draft | **PASS** | Do not mark ready yet. |
-| Preserve commit history | **PASS** | No squash/reset workaround before release. |
-| Final README/reproduction URLs | **BLOCKED** | Insert only real deployed URLs. |
-| Repository public or transferred if required | **BLOCKED** | Human account action after evidence passes. |
-| Merge PR #1 | **BLOCKED** | Every previous gate must pass. |
-| Create submission tag | **BLOCKED** | Tag the merged release commit only. |
+Ordinary Chrome, Playwright and `?proof=1` remain harness evidence only.
 
-# Exact human actions still required
+## GitHub Actions status
 
-When back at the computer:
+Hosted Actions has previously failed before runner allocation with zero executed steps. Until a run receives a real runner, do not label that state as either a code failure or a verification pass. The local source gate is the authoritative unblock path.
 
-1. Open `build/pact-vertical-slice` in Codex.
-2. Run the clean-checkout commands above.
-3. Generate and commit `package-lock.json` if absent.
-4. Fix only reproducible failures; do not add scope.
-5. Supply four hostnames and point DNS to the Docker host.
-6. Deploy the Caddy/Compose stack.
-7. Run `npm run deploy:smoke`.
-8. Open Relay in a fresh ChatGPT built-in browser context.
-9. Execute every step in `docs/chatgpt-validation.md` and save raw JSON evidence.
-10. Rehearse the locked script until repeatable in 2:40–2:50.
-11. Record the public video.
-12. Make the repository public or transfer it only if required by the competition.
-13. Update this ledger to all green.
-14. Merge through PR #1.
-15. Create the submission tag.
+## Merge rule
 
-Until those actions complete:
+PR #1 remains draft. `main` remains frozen.
 
-# **DO NOT MERGE**
+Merge only when all of these are real passes against an identified SHA:
+
+```text
+source gate
+full deployment gate
+actual ChatGPT gate
+three canonical rehearsals
+three stale/recovery rehearsals
+partial-commit recovery drill
+public video under three minutes
+repository visibility requirement
+```
+
+Generated evidence must not be committed after deployment unless the resulting new commit is rebuilt, redeployed and revalidated.
