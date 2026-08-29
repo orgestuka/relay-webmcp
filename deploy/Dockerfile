@@ -18,6 +18,7 @@ COPY package.json .npmrc .nvmrc tsconfig.json tsconfig.check.json globals.d.ts .
 COPY apps ./apps
 COPY packages ./packages
 COPY scripts ./scripts
+COPY deploy ./deploy
 
 RUN npm install --no-audit --no-fund
 RUN npm run verify

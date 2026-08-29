@@ -40,6 +40,11 @@ interface ExecutionProbe {
 }
 
 const commandOrigin = window.location.origin;
+const originAgentClusterSupported = "originAgentCluster" in window;
+const originAgentCluster = originAgentClusterSupported ? window.originAgentCluster : null;
+const secureContext = window.isSecureContext;
+const originIsolationPass = secureContext && originAgentCluster === true;
+
 const providerSpecs: ProviderDiagnosticSpec[] = [
   {
     id: "shelter",
@@ -265,7 +270,7 @@ async function registerReleaseTools(): Promise<void> {
   await registerTool({
     name: "relay_diagnose_webmcp",
     title: "Diagnose Relay WebMCP compatibility",
-    description: "Return machine-readable evidence for Relay registration, provider-origin discovery, successful read-only provider execution and observed dynamic toolchange events. This tool never creates proposals or commits capacity.",
+    description: "Return machine-readable evidence for secure origin isolation, Relay registration, provider-origin discovery, successful read-only provider execution and observed dynamic toolchange events. This tool never creates proposals or commits capacity.",
     inputSchema: {
       type: "object",
       properties: {
@@ -314,7 +319,8 @@ async function registerReleaseTools(): Promise<void> {
         ? providers.every((provider) => provider.executionPass === true)
         : null;
       const compatibilityMode = bridgeTools.length ? "fixed-top-level-bridge-active" : "direct-only";
-      const overallPass = runtimeRegistrationPass
+      const overallPass = originIsolationPass
+        && runtimeRegistrationPass
         && clientVisibilityPass
         && providerDiscoveryPass
         && (providerExecutionPass ?? true)
@@ -325,6 +331,16 @@ async function registerReleaseTools(): Promise<void> {
         capturedAt: new Date().toISOString(),
         commandOrigin,
         compatibilityMode,
+        environment: {
+          secureContext,
+          originAgentClusterSupported,
+          originAgentCluster,
+          originIsolationPass,
+          requiredHeader: "Origin-Agent-Cluster: ?1",
+          recovery: originIsolationPass
+            ? null
+            : "Verify the header on all four origins, then reopen Relay in a fresh ChatGPT browser context because agent-cluster keying is sticky within a browsing context group.",
+        },
         api: {
           registerTool: Boolean(modelContext?.registerTool),
           getTools: Boolean(modelContext?.getTools),

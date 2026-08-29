@@ -46,10 +46,18 @@ async function probe(name, host, titleFragment, expectedOrigins) {
 
     const page = await fetchWithTimeout(origin, { headers: { Accept: "text/html" } });
     const html = await page.text();
+    const originAgentCluster = page.headers.get("origin-agent-cluster");
     result.checks.push({ id: "https_page", pass: page.ok && page.url.startsWith("https://"), status: page.status, finalUrl: page.url });
     result.checks.push({ id: "title", pass: html.toLowerCase().includes(titleFragment.toLowerCase()), expectedFragment: titleFragment });
     result.checks.push({ id: "app_mount", pass: html.includes('id="app"') || html.includes("id='app'") });
     result.checks.push({ id: "nosniff_header", pass: page.headers.get("x-content-type-options") === "nosniff", value: page.headers.get("x-content-type-options") });
+    result.checks.push({
+      id: "origin_agent_cluster_header",
+      pass: originAgentCluster?.trim() === "?1",
+      expected: "?1",
+      value: originAgentCluster,
+      consequence: "WebMCP registerTool/getTools reject non-origin-keyed documents with SecurityError.",
+    });
 
     const assets = [];
     for (const path of assetPaths(html)) {
@@ -99,12 +107,12 @@ for (const [name, host, title, expectedOrigins] of targets) {
 }
 
 const report = {
-  schema: "relay.deployment-smoke.v1",
+  schema: "relay.deployment-smoke.v2",
   executedAt: new Date().toISOString(),
-  evidenceType: "deployed-four-origin-http-smoke",
+  evidenceType: "deployed-four-origin-http-and-origin-isolation-smoke",
   pass: probes.every((probeResult) => probeResult.pass),
   probes,
-  nextGate: "Open the Relay origin in ChatGPT's built-in browser and call relay_diagnose_webmcp with executeReadProbes=true.",
+  nextGate: "Open the Relay origin in a fresh ChatGPT built-in browser context and call relay_diagnose_webmcp with executeReadProbes=true.",
 };
 
 console.log(JSON.stringify(report, null, 2));

@@ -9,6 +9,7 @@
     -Server
     X-Content-Type-Options "nosniff"
     Referrer-Policy "no-referrer"
+    Origin-Agent-Cluster "?1"
   }
 }
 

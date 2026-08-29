@@ -11,3 +11,8 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+interface Window {
+  /** True only when the current document actually runs in an origin-keyed agent cluster. */
+  readonly originAgentCluster: boolean;
+}

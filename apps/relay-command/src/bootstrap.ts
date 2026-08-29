@@ -20,7 +20,26 @@ function parseSecureOrigin(value: string, label: string): URL {
   return url;
 }
 
+function assertWebMcpEnvironment(): void {
+  if (!window.isSecureContext) {
+    throw new Error("WebMCP requires a secure context. Use HTTPS, or localhost for local development.");
+  }
+
+  // The current WebMCP algorithms reject registration and discovery when the
+  // document is not running in an origin-keyed agent cluster. The property is
+  // feature-detected so an older experimental client can still expose a useful
+  // compatibility failure through the normal diagnostics.
+  if ("originAgentCluster" in window && window.originAgentCluster !== true) {
+    throw new Error(
+      "WebMCP requires an origin-keyed agent cluster. Serve every Relay origin with "
+      + "Origin-Agent-Cluster: ?1, then reopen Relay in a fresh ChatGPT browser context.",
+    );
+  }
+}
+
 async function boot(): Promise<void> {
+  assertWebMcpEnvironment();
+
   const command = parseSecureOrigin(window.location.origin, "Relay Command");
   const commandIsLocal = isLocalHost(command.hostname);
   const providers = configuredOrigins.map((value, index) => parseSecureOrigin(value, `Provider ${index + 1}`));

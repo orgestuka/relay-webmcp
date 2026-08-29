@@ -15,10 +15,11 @@
     "test": "vitest run",
     "smoke": "node --experimental-strip-types scripts/integrity-smoke.ts",
     "audit:release": "node --experimental-strip-types scripts/release-audit.ts",
+    "check:origin-isolation": "node scripts/origin-isolation-check.mjs",
     "typecheck": "tsc -p tsconfig.check.json --noEmit",
-    "verify": "npm run typecheck && npm run smoke && npm run audit:release && npm test && npm run build",
-    "deploy:check": "node scripts/deploy-preflight.mjs .env.deploy",
-    "deploy:check:dns": "node scripts/deploy-preflight.mjs .env.deploy --dns",
+    "verify": "npm run check:origin-isolation && npm run typecheck && npm run smoke && npm run audit:release && npm test && npm run build",
+    "deploy:check": "npm run check:origin-isolation && node scripts/deploy-preflight.mjs .env.deploy",
+    "deploy:check:dns": "npm run check:origin-isolation && node scripts/deploy-preflight.mjs .env.deploy --dns",
     "deploy:smoke": "node scripts/deployment-smoke.mjs .env.deploy"
   },
   "devDependencies": {
