@@ -1,3 +1,5 @@
+import { assertCompiledReleaseSha } from "./release-provenance";
+
 const configuredOrigins = [
   import.meta.env.VITE_SHELTER_ORIGIN || "http://localhost:5174",
   import.meta.env.VITE_TRANSIT_ORIGIN || "http://localhost:5175",
@@ -42,6 +44,11 @@ async function boot(): Promise<void> {
 
   const command = parseSecureOrigin(window.location.origin, "Relay Command");
   const commandIsLocal = isLocalHost(command.hostname);
+  const compiledReleaseSha = assertCompiledReleaseSha(import.meta.env.VITE_RELEASE_SHA, {
+    localDevelopment: commandIsLocal,
+  });
+  if (compiledReleaseSha) document.documentElement.dataset.releaseSha = compiledReleaseSha;
+
   const providers = configuredOrigins.map((value, index) => parseSecureOrigin(value, `Provider ${index + 1}`));
   const origins = providers.map((provider) => provider.origin);
 
