@@ -105,17 +105,34 @@ describe("relay_get_release_identity", () => {
       app: "relay-command",
       origin: "https://relay.example.test",
       compiledSha: releaseSha,
+      edgeHeaderRaw: releaseSha,
       edgeSha: releaseSha,
       responseStatus: 200,
       checks: {
         responseOk: true,
         compiledShaValid: true,
+        edgeHeaderConsistent: true,
         edgeShaValid: true,
         manifestValid: true,
         allLayersConsistent: true,
       },
       manifestError: null,
       recovery: null,
+    });
+  });
+
+  it("accepts repeated identical edge identity", async () => {
+    const result = await execute(await importReleaseIdentity({
+      edgeSha: `${releaseSha}, ${releaseSha.toUpperCase()}`,
+    }));
+
+    expect(result).toMatchObject({
+      ok: true,
+      edgeSha: releaseSha,
+      checks: {
+        edgeHeaderConsistent: true,
+        allLayersConsistent: true,
+      },
     });
   });
 
@@ -128,7 +145,28 @@ describe("relay_get_release_identity", () => {
       ok: false,
       compiledSha: releaseSha,
       edgeSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      checks: { responseOk: true, allLayersConsistent: false },
+      checks: {
+        responseOk: true,
+        edgeHeaderConsistent: true,
+        allLayersConsistent: false,
+      },
+    });
+  });
+
+  it("rejects conflicting duplicate trusted-edge headers", async () => {
+    const conflicting = `${releaseSha}, ${"a".repeat(40)}`;
+    const result = await execute(await importReleaseIdentity({ edgeSha: conflicting }));
+
+    expect(result).toMatchObject({
+      ok: false,
+      edgeHeaderRaw: conflicting,
+      edgeSha: null,
+      checks: {
+        edgeHeaderConsistent: false,
+        edgeShaValid: false,
+        allLayersConsistent: false,
+      },
+      manifestError: "conflicting X-Relay-Release response headers",
     });
   });
 
@@ -160,8 +198,14 @@ describe("relay_get_release_identity", () => {
     const missingEdge = await execute(await importReleaseIdentity({ edgeSha: null }));
     expect(missingEdge).toMatchObject({
       ok: false,
+      edgeHeaderRaw: null,
       edgeSha: null,
-      checks: { responseOk: true, edgeShaValid: false, allLayersConsistent: false },
+      checks: {
+        responseOk: true,
+        edgeHeaderConsistent: false,
+        edgeShaValid: false,
+        allLayersConsistent: false,
+      },
     });
   });
 
@@ -187,10 +231,15 @@ describe("relay_get_release_identity", () => {
 
     expect(result).toMatchObject({
       ok: false,
+      edgeHeaderRaw: null,
       edgeSha: null,
       manifest: null,
       responseStatus: null,
-      checks: { responseOk: false, allLayersConsistent: false },
+      checks: {
+        responseOk: false,
+        edgeHeaderConsistent: false,
+        allLayersConsistent: false,
+      },
       manifestError: "synthetic network failure",
     });
   });
