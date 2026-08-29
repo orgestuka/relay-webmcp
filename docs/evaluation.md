@@ -1,70 +1,148 @@
 # Relay evaluation plan
 
-Relay is evaluated on two separate questions:
+Relay is evaluated on three independent questions:
 
 1. Does the experience materially depend on WebMCP?
-2. Does consequential execution remain human-governed under failure and adversarial input?
+2. Does consequential capability remain human-governed under failure and adversarial input?
+3. Can the deployed evidence be tied to the exact reviewed source commit?
 
-## 1. WebMCP dependency test
+A pass in one layer never substitutes for another.
 
-The built-in proof runner is restricted to:
+## 1. Evidence classes
+
+| Class | Proves | Does not prove |
+| --- | --- | --- |
+| Source gates | release invariants exist and parse | dependencies install or code executes |
+| Unit and hostile tests | protocol, policy, audit and race behavior | deployed headers or ChatGPT compatibility |
+| Deterministic browser harness | controlled WebMCP tool lifecycle | actual ChatGPT behavior |
+| Four-origin deployment smoke | real HTTPS, headers, assets and release identity | agent-visible tools inside ChatGPT |
+| Actual ChatGPT gate | supported client can discover and execute the deployed surface | repeated demo reliability until rehearsed |
+| Rehearsal/video | judging path is legible and repeatable | stronger protocol guarantees than the underlying evidence |
+
+## 2. Exact deployed identity evaluation
+
+### Procedure
+
+1. Run the full release gate from a clean checkout.
+2. Open Relay in a fresh ChatGPT browser context.
+3. Call `relay_get_release_identity`.
+
+### Pass condition
+
+```text
+compiled application SHA
+=
+trusted X-Relay-Release edge header
+=
+/release.json SHA
+=
+git rev-parse HEAD
+```
+
+Required result:
+
+```json
+{
+  "ok": true,
+  "checks": {
+    "responseOk": true,
+    "compiledShaValid": true,
+    "edgeHeaderConsistent": true,
+    "edgeShaValid": true,
+    "manifestValid": true,
+    "allLayersConsistent": true
+  }
+}
+```
+
+Conflicting duplicate edge headers, a non-success manifest response or any mismatched layer fails the gate.
+
+## 3. WebMCP dependency evaluation
+
+The deterministic proof runner may use only:
 
 ```ts
 document.modelContext.getTools()
 document.modelContext.executeTool()
 ```
 
-It may not import application stores, provider runtimes, proposal maps, signing keys or commit functions.
+It may not import application stores, provider runtimes, proposal maps, signing keys or commit functions. Its output remains harness evidence.
 
-A successful proof therefore establishes that the full workflow is reachable through the live WebMCP capability surface.
+The decisive client evaluation happens through ChatGPT's built-in browser.
 
-### Expected discovery surface
+### Initial ChatGPT-visible surface
 
-Relay Command:
+Relay Command permanent tools:
 
-- `relay_get_incident`
-- `relay_get_mesh_state`
-- `relay_stage_plan`
-- `relay_get_plan`
-- `relay_request_approval` after validation
+```text
+relay_get_incident
+relay_get_mesh_state
+relay_stage_plan
+relay_get_plan
+relay_get_release_identity
+relay_diagnose_webmcp
+relay_get_audit_bundle
+relay_bridge_status
+```
 
-Shelter Grid:
+Fixed provider read/proposal wrappers:
 
-- `shelter_find_capacity`
-- `shelter_propose_reservation`
-- `shelter_commit_reservation` while current proposals exist
+```text
+relay_bridge_shelter_find_capacity
+relay_bridge_shelter_propose_reservation
+relay_bridge_transit_find_accessible_routes
+relay_bridge_transit_propose_reservation
+relay_bridge_supply_check_stock
+relay_bridge_supply_propose_reservation
+```
 
-Transit Ops:
+Before consent, all top-level provider commit wrappers must be absent.
 
-- `transit_find_accessible_routes`
-- `transit_propose_reservation`
-- `transit_commit_reservation` while current proposals exist
+### Diagnostic pass condition
 
-Supply Hub:
+`relay_diagnose_webmcp` with read probes must return:
 
-- `supply_check_stock`
-- `supply_propose_reservation`
-- `supply_commit_reservation` while current proposals exist
+```text
+provenance pass
+origin-isolation pass
+permanent Relay registration pass
+ChatGPT visibility pass
+all three provider discovery passes
+all three semantic read execution passes
+fixed bridge initial registration and visibility passes
+```
 
-## 2. Deterministic success evaluation
+A listed tool that throws, returns null, invalid JSON or semantic `{ "ok": false }` fails.
+
+## 4. Deterministic success evaluation
 
 ### Objective
 
 Evacuate all 42 Riverside residents before 18:00 while:
 
 - providing 42 shelter beds
-- providing 42 transport seats
-- providing at least 9 wheelchair-accessible positions
+- providing 42 transport positions
+- providing at least 9 accessible positions
 - preserving 20 North Shelter beds
 - providing 42 evacuation kits
 - providing 9 mobility medical kits
-- remaining beneath the human authority ceiling
+- remaining beneath human authority
 
-### Expected plan
+### Initial expected plan
 
-Six provider proposals with a total cost of €2,733.
+Six proposals, total cost **€2,733**, staged under the incident's **€5,000** ceiling.
 
-### Expected state transitions
+### Required human action
+
+The human visibly narrows authority:
+
+```text
+€5,000 → €3,000
+```
+
+The agent must not perform this narrowing.
+
+### State transitions
 
 ```text
 DRAFT
@@ -74,194 +152,236 @@ DRAFT
 → COMMITTED
 ```
 
-### Expected evidence
+### Capability transitions
 
-- six proposal IDs visible in Relay
-- seven deterministic policy checks passing
-- human approval modal showing exact origins, operations, versions and costs
-- signed token returned only after the human click
-- three same-origin commit calls
-- six origin-bound receipts
-- final plan status `COMMITTED`
+```text
+before approval
+  read/proposal wrappers visible
+  relay_request_approval visible after validation
+  commit wrappers absent
 
-## 3. Stale-state evaluation
+after exact approval
+  relay_request_approval absent
+  exactly three provider commit wrappers visible
+
+after each provider batch closes
+  that provider's commit wrapper disappears
+
+after global completion
+  all commit wrappers absent
+```
+
+### Final evidence
+
+- six proposal IDs
+- seven deterministic policy checks
+- exact consent sheet
+- signed token returned only after human approval
+- three complete same-origin commit calls
+- six unique receipts
+- final `COMMITTED` status
+- audit bundle v2 pass
+
+## 5. Stale-state and authority-retention evaluation
 
 ### Procedure
 
-1. Create and stage the canonical plan.
-2. Call `relay_request_approval`.
-3. While the agent call is suspended, click **Inject disruption** in Shelter Grid.
+1. Build the canonical plan at €5,000.
+2. Human narrows authority to €3,000.
+3. Call `relay_request_approval`.
+4. While the call is suspended, change Shelter Grid capacity.
 
-### Expected result
+### Required result
 
-- South Shelter availability changes
-- Shelter Grid advances its state version
-- every prior shelter proposal is deleted
-- Shelter Grid commit capability is removed
-- Relay detects the version mismatch
-- the plan becomes `STALE`
-- the pending approval call resolves with a stale-plan result
-- no provider capacity is consumed by the old plan
+- Shelter Grid advances v1 → v2
+- prior shelter proposals disappear
+- plan becomes `STALE`
+- pending approval resolves without a token
+- `relay_request_approval` disappears
+- top-level commit wrappers remain absent
+- no provider capacity is consumed
+- durable human authority remains €3,000
 
-### Pass condition
+### Recovery pass condition
 
-The old proposal set can no longer reach provider mutation through any supported tool path.
+The agent replaces only invalid shelter work, reuses other proposals only if current and restages under `maxBudget: 3000`.
 
-## 4. Human-rejection evaluation
+Expected recovered shelter work:
+
+```text
+East Shelter    18 beds
+South Shelter   12 beds
+North Shelter   12 beds
+```
+
+Recovered total: **€2,793**.
+
+## 6. Human rejection evaluation
 
 ### Procedure
 
 1. Stage a valid plan.
 2. Call `relay_request_approval`.
-3. Click **Reject**.
+3. Human clicks **Reject**.
 
-### Expected result
+### Required result
 
 - approval resolves with `HUMAN_REJECTED`
-- no signed token is returned
-- provider inventory is unchanged
-- the approval capability disappears
+- no token is returned
+- no top-level commit wrapper appears
+- inventory is unchanged
 - plan status becomes `REJECTED`
 
-## 5. Authorization adversarial matrix
+## 7. Authorization adversarial matrix
 
-| Attack | Expected result | Evidence |
-| --- | --- | --- |
-| Commit without a token | input rejected, no mutation | provider runtime |
-| Token payload changed after signing | `INVALID_SIGNATURE` | PACT tests |
-| Token from another session | `SESSION_MISMATCH` | PACT tests |
-| Private JWK supplied as public trust material | key rejected | PACT tests |
-| Same session ID with substituted public key | session update rejected | provider runtime |
-| Scope repeats a proposal ID | `DUPLICATE_SCOPE` | PACT verifier |
-| Scope total differs from quantity × unit cost | `SCOPE_COST_INCONSISTENT` | PACT tests |
-| Aggregate scope cost exceeds human ceiling | `AGGREGATE_COST_EXCEEDED` | PACT tests |
-| Resource or purpose changed after approval | `OPERATION_SCOPE_MISMATCH` | PACT tests |
-| Provider origin changed | origin scope rejected | PACT verifier |
-| Proposal state version changed | `VERSION_SCOPE_MISMATCH` or `STALE_PROPOSAL` | PACT tests and live drill |
-| Proposal expires | commit capability removed and commit rejected | provider expiry timer |
-| Only part of an approved provider batch is submitted | `INCOMPLETE_PROVIDER_BATCH` | PACT tests |
-| Batch demand exceeds live capacity | entire local batch rejected | provider runtime |
-| Same proposal committed twice | proposal no longer exists | provider runtime |
-| Provider message comes from another frame | message rejected | Relay source binding |
-| Production configuration points to localhost | boot rejected | Relay bootstrap |
-| Dynamic tool enabled concurrently | one registration | lifecycle tests |
-| Tool disabled during pending registration | eventual registration revoked | lifecycle tests |
+| Attack | Expected result |
+| --- | --- |
+| Stale captured bridge wrapper invoked after approval loss | `HUMAN_APPROVAL_REQUIRED`, provider not invoked |
+| Commit without a token | input or provider authorization rejected, no mutation |
+| Token payload changed after signing | `INVALID_SIGNATURE` |
+| Token from another session | `SESSION_MISMATCH` |
+| Private JWK supplied as trust material | key rejected |
+| Public key substituted under active session ID | session update rejected |
+| Duplicate proposal scope | `DUPLICATE_SCOPE` |
+| Scope cost inconsistent | `SCOPE_COST_INCONSISTENT` |
+| Aggregate scope cost above authority | `AGGREGATE_COST_EXCEEDED` |
+| Resource, quantity, cost or purpose changed | `OPERATION_SCOPE_MISMATCH` |
+| Provider origin changed | origin scope rejected |
+| Provider version changed | `VERSION_SCOPE_MISMATCH` or `STALE_PROPOSAL` |
+| Proposal or approval expires | capability removed and commit rejected |
+| Partial approved provider batch submitted | `INCOMPLETE_PROVIDER_BATCH` |
+| Batch demand exceeds capacity | entire local batch rejected |
+| Same proposal committed twice | proposal no longer exists |
+| Provider message comes from wrong frame | message rejected |
+| Production configuration points to localhost | boot rejected |
+| Production compiled SHA is absent or placeholder | boot rejected |
+| Conflicting duplicate release headers | identity proof fails |
+| Dynamic tool enabled concurrently | one registration |
+| Tool disabled during pending registration | eventual registration revoked |
 
-## 6. Policy adversarial matrix
+## 8. Policy adversarial matrix
 
 | Invalid plan | Expected failed check |
 | --- | --- |
 | 42 generic transport seats, zero accessible positions | `accessible_transport` |
 | sufficient shelter by consuming protected North reserve | `north_reserve` |
-| all general evacuation kits, no mobility kits | `mobility_kits` |
-| feasible resources above the human ceiling | `budget` |
+| all evacuation kits, no mobility kits | `mobility_kits` |
+| feasible resources above authority | `budget` |
 | fewer than 42 shelter beds | `shelter_capacity` |
-| fewer than 42 transport seats | `transport_capacity` |
+| fewer than 42 transport positions | `transport_capacity` |
 | fewer than 42 evacuation kits | `evacuation_kits` |
 
-The policy engine runs before the approval capability appears and again immediately before signing.
+The policy engine runs before approval capability appears and again immediately before signing.
 
-## 7. Dynamic capability evaluation
+## 9. Partial cross-provider completion evaluation
 
-The live capability panel should show these changes:
+Relay does not claim distributed ACID.
 
-### Initial state
+### Procedure
 
-- Relay read and stage tools
-- provider search and proposal tools
-- no Relay approval tool
-- no provider commit tools
+1. Approve the exact plan.
+2. Commit Shelter Grid.
+3. Submit an incomplete Transit Ops batch.
 
-### After provider proposal
+### Required result
 
-- that provider's commit tool appears
+- Shelter receipts remain visible
+- plan remains `APPROVED`, not `COMMITTED`
+- Transit inventory and version remain unchanged
+- incomplete Transit batch returns `INCOMPLETE_PROVIDER_BATCH`
+- audit bundle v2 returns `AUDIT_STATE_INCONSISTENT`
+- valid remaining batches can complete while exact authority remains live
 
-### After valid plan staging
+Expired or stale authority requires a fresh plan and fresh human approval.
 
-- `relay_request_approval` appears
+## 10. Final audit evaluation
 
-### After provider disruption
+Audit bundle v2 passes only when:
 
-- affected provider commit tool disappears
-- `relay_request_approval` disappears when the plan becomes stale
-
-### After approval
-
-- Relay approval tool disappears
-- provider commit tools remain only for approved current proposals
-
-### After commit
-
-- provider commit tool disappears
-
-This validates that WebMCP is being used as a stateful capability system, not as a static list of button aliases.
-
-## 8. Automated repository gates
-
-Run:
-
-```bash
-npm run verify
+```text
+final plan proposal IDs
+=
+each matching approval's exact scope IDs and arguments
+=
+receipt proposal IDs and arguments
 ```
 
-The gate includes:
+It also requires:
 
-1. TypeScript validation for protocol and applications
-2. PACT canonicalization, signature and authorization tests
-3. dynamic WebMCP registration lifecycle tests
-4. deterministic evacuation policy tests
-5. production builds for all four applications
+- current canonical plan hash
+- one Relay session for matching approvals
+- exact visible authority ceiling
+- exact proposal and receipt totals
+- one valid receipt per final proposal
+- successful deployed release identity
+- final `COMMITTED` status
 
-Relevant test files:
+Missing, duplicate, malformed, mutated or partial evidence fails even if the plan claims completion.
 
-- `packages/pact/src/index.test.ts`
-- `packages/webmcp-runtime/src/index.test.ts`
-- `packages/simulation/src/policy.test.ts`
+## 11. Automated gates
 
-## 9. Supported-browser manual checklist
+### Source release gate
 
-Before recording the final demo:
+```bash
+npm run gate:source
+```
 
-- [ ] all four applications load on distinct secure origins
-- [ ] Relay reports `3/3 PROVIDERS`
-- [ ] live capability panel shows remote provider tools
-- [ ] proof runner discovers all expected tools
-- [ ] canonical success path reaches `COMMITTED`
-- [ ] six receipts appear
-- [ ] page reload resets deterministic state
-- [ ] stale-state drill invalidates the plan before approval
-- [ ] human rejection consumes no capacity
-- [ ] browser console contains no uncaught errors
-- [ ] tool descriptions remain concise and unambiguous
-- [ ] final video stays below three minutes
+Requires a clean exact branch, Node 22, npm 10.9.2, committed lockfile, script syntax, release-contract checks, fresh `npm ci`, all source gates, tests and four production builds.
 
-## 10. Rubric mapping
+### Full deployment gate
+
+```bash
+npm run gate:release -- --env .env.deploy
+```
+
+Adds DNS, Docker, Compose, Caddy, Nginx, production images and four-origin HTTPS/security/provenance smoke.
+
+## 12. Final manual checklist
+
+- [ ] exact source gate passes
+- [ ] exact full deployment gate passes
+- [ ] four distinct secure origins
+- [ ] release identity passes in ChatGPT
+- [ ] initial diagnostic passes in ChatGPT
+- [ ] one real proposal succeeds against every provider
+- [ ] commit wrappers are absent before consent
+- [ ] human narrows authority to €3,000
+- [ ] stale drill invalidates authority without mutation
+- [ ] recovery retains €3,000
+- [ ] exact approval creates exactly three commit wrappers
+- [ ] three providers independently commit
+- [ ] six unique receipts close the plan
+- [ ] audit bundle v2 passes
+- [ ] partial completion drill passes
+- [ ] reset restores deterministic v1 state
+- [ ] browser console has no uncaught error
+- [ ] three canonical and three stale/recovery rehearsals pass
+- [ ] final video is under three minutes
+
+## 13. Rubric mapping
 
 ### WebMCP leverage
 
-Evidence:
-
-- cross-origin descendant tools
-- `allow="tools"`
-- `exposedTo` origin gating
-- dynamic registration and revocation
-- `toolchange` visualization
-- suspended async human approval
-- same-page visible state mutation
-- proof runner limited to `getTools()` and `executeTool()`
+- four origin-keyed WebMCP documents
+- `allow="tools"` and `exposedTo`
+- exact-origin `getTools` and `executeTool`
+- fixed compatibility bridge
+- stateful registration and revocation
+- `toolchange` evidence
+- human-gated asynchronous tool execution
+- same-page provider mutation
 
 ### Execution
 
-Evidence:
-
 - deterministic policy engine
-- exact signed authorization capsule
-- automatic expiry
-- atomic local batches
+- exact signed authorization
+- invocation-time authority recheck
+- proposal expiry and stale invalidation
+- atomic same-origin batches
 - persistent provider frames
-- source-bound messaging
-- adversarial test suites
-- explicit non-claims
+- exact audit closure
+- commit-bound release provenance
+- one fail-closed source gate and one deployment gate
 
 ### Impact
 
@@ -269,4 +389,4 @@ The pattern generalizes to procurement, travel disruption, healthcare coordinati
 
 ### Creativity and ambition
 
-Relay treats websites as federated trust and execution boundaries for agents. PACT proposes a reusable authorization primitive rather than adding AI to an existing single-site workflow.
+Relay treats websites as federated trust and execution boundaries for agents. PACT is a reusable authorization primitive, not AI decoration on a single-site workflow.
