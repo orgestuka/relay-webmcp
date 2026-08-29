@@ -2,258 +2,235 @@
 
 **Human-governed operations for the agentic web.**
 
-> One objective. Four independent origins. Six consequential operations. One exact human decision.
+> One objective. Three independent provider websites. Six consequential operations. One exact human decision.
 
-Relay lets an agent compose work across independent WebMCP websites while the human retains precise authority over execution.
+Relay coordinates a 42-person flood evacuation across:
 
-The reference scenario coordinates a 42-person flood evacuation across:
+- **Shelter Grid**: bed inventory and reservations
+- **Transit Ops**: standard and wheelchair-accessible transport
+- **Supply Hub**: evacuation and mobility medical supplies
 
-- **Relay Command**: shared incident, plan, consent and provenance surface
-- **Shelter Grid**: independent bed inventory and reservations
-- **Transit Ops**: independent standard and wheelchair-accessible transport
-- **Supply Hub**: independent evacuation and medical supplies
+The agent can discover live capacity, create non-binding proposals and stage a cross-provider plan. It cannot consume provider capacity until the human approves the exact operations, origins, provider versions and total authority ceiling.
 
-The agent may discover capacity, create non-binding proposals and stage a cross-provider plan. It cannot consume capacity until the human approves the exact operation set, provider origins, state versions and cost ceiling.
-
-## The thesis
-
-WebMCP makes websites callable by agents. Relay explores the next systems problem:
-
-> What should the web become when one human objective spans multiple independent sites and some actions are consequential?
-
-Relay's answer is **PACT**:
+Relay's protocol is **PACT**:
 
 > **Propose → Amend → Consent → Transact**
 
-The agent is the composer. The websites remain visible state and execution boundaries. The human is the authority.
+The agent composes. The human authorizes. Each website independently verifies and executes its own scope.
 
-Relay is not a chatbot embedded in a dashboard. The browser itself coordinates a federated capability surface across independent origins.
+## Why WebMCP matters
 
-## What the demo proves
+Without WebMCP, Relay would either centralize every provider behind one backend or rely on brittle visual automation.
 
-A successful run demonstrates all of the following in one legible workflow:
+With WebMCP:
 
-1. A top-level page discovers tools exposed by three descendant provider origins.
-2. The agent queries live, versioned provider state.
-3. Provider proposals are non-binding and expire automatically.
-4. Relay validates deterministic incident constraints before consent is possible.
-5. The human can amend the maximum authority without giving the agent blanket permission.
-6. `relay_request_approval` remains suspended while the human decides.
-7. Human approval produces a short-lived P-256 signed PACT token.
-8. Providers independently verify the exact signed scope before mutation.
-9. Each provider commits its complete same-origin batch atomically.
-10. Origin-bound receipts converge the shared plan to `COMMITTED`.
+- each visible provider website owns its own narrow capabilities
+- provider tools execute inside the provider document
+- provider origins remain independently identifiable
+- tool availability changes when provider state changes
+- the human sees the same provider state the agent operates
+- obsolete capabilities can be revoked through the tool lifecycle
 
-The failure path is equally important:
+Relay uses WebMCP as a browser capability system, not as a button alias.
 
-1. The agent stages a valid plan.
-2. Shelter Grid changes capacity before consent.
-3. Its state version advances and every old shelter proposal is invalidated.
-4. Relay marks the plan `STALE`.
-5. The approval call resolves with a failure result.
-6. The stale provider commit capability disappears.
-7. The agent must re-query, re-propose and restage.
+## ChatGPT compatibility architecture
 
-Stale plans fail closed.
+OpenAI currently documents that tools provided only by embedded content are not directly supported by ChatGPT's site-tools client.
 
-## Built-in live WebMCP proof
+Relay therefore keeps the providers as independent WebMCP documents and exposes a **strict fixed top-level bridge** from Relay Command.
 
-Relay includes a judge-facing proof console in `apps/relay-command/src/demo-agent.ts`.
+Each wrapper is hard-bound to:
 
-The proof runner is deliberately constrained. It may only use:
-
-```ts
-document.modelContext.getTools()
-document.modelContext.executeTool()
+```text
+one provider origin
++ one provider tool name
++ one explicit input schema
 ```
 
-It does not import Relay state, provider inventories, proposal maps, signing keys or commit functions. It discovers and invokes the same WebMCP tools available to an external agent.
+There is no arbitrary origin parameter and no generic `execute any tool` wrapper.
 
-The proof console can execute either:
+The bridge:
 
-- the complete approval and commit path
-- the stale-state path when a human injects a provider disruption during consent
-- the human-rejection path
+1. discovers the exact provider tool with `getTools({ fromOrigins })`
+2. registers a fixed Relay wrapper only while that provider tool exists
+3. invokes the provider tool with `executeTool()`
+4. unregisters the wrapper when the provider capability expires, commits or becomes stale
 
-This is an evaluation harness, not a substitute for the ChatGPT demonstration. It gives judges a deterministic way to verify that the product actually depends on the WebMCP capability layer.
+Provider-side PACT verification remains authoritative. The bridge cannot sign approval, bypass state versions or mutate inventory directly.
 
-## Canonical evacuation plan
+Use the normal Relay URL for judging. `?direct=1` disables the bridge only for controlled compatibility diagnosis.
 
-The deterministic success path stages six exact operations:
+## Canonical scenario
+
+The initial valid plan contains six operations:
 
 | Provider | Operation | Quantity | Cost |
 | --- | --- | ---: | ---: |
-| Shelter Grid | East Shelter beds | 18 | €180 |
-| Shelter Grid | South Shelter beds | 24 | €216 |
-| Transit Ops | Rapid Bus seats | 32 | €928 |
-| Transit Ops | Accessible shuttle seats | 10 | €680 |
-| Supply Hub | Evacuation kits | 42 | €504 |
-| Supply Hub | Mobility medical kits | 9 | €225 |
+| Shelter Grid | East Shelter | 18 beds | €180 |
+| Shelter Grid | South Shelter | 24 beds | €216 |
+| Transit Ops | Rapid Bus 32 | 32 seats | €928 |
+| Transit Ops | Access Shuttle 10 | 10 accessible seats | €680 |
+| Supply Hub | Evacuation Kits | 42 kits | €504 |
+| Supply Hub | Mobility Medical Kits | 9 kits | €225 |
 |  | **Total** |  | **€2,733** |
 
-The plan satisfies these hard constraints:
+Hard constraints:
 
-- all 42 residents receive shelter
-- all 42 residents receive transport
-- at least 9 wheelchair-accessible positions are available
-- North Shelter retains at least 20 beds
-- every resident receives an evacuation kit
-- all 9 mobility-constrained residents receive a medical kit
-- total cost remains within the human authority ceiling
+- shelter all 42 residents
+- transport all 42 residents
+- provide at least 9 wheelchair-accessible positions
+- keep at least 20 beds unallocated at North Shelter
+- provide 42 evacuation kits
+- provide 9 mobility medical kits
+- remain under the human authority ceiling
+- commit nothing before explicit human approval
 
-## PACT authorization capsule
+## The memorable failure path
 
-Human approval does not mean:
+1. The agent stages a valid plan.
+2. The human lowers authority to €3,000.
+3. The agent calls `relay_request_approval` and pauses.
+4. Shelter capacity changes while consent is pending.
+5. Shelter Grid advances its state version and deletes old proposals.
+6. The stale plan is invalidated.
+7. The approval and shelter commit capabilities disappear.
+8. The agent re-queries and replaces only stale shelter work.
+9. The human approves the recovered exact scopes.
+10. Providers independently verify, commit and issue receipts.
 
-> Do whatever is necessary to complete the objective.
+The recovered shelter plan uses:
 
-It means:
+```text
+East Shelter    18 beds
+South Shelter   12 beds
+North Shelter   12 beds
+```
 
-> Execute these exact operations, at these exact origins and state versions, before this expiry, beneath this total authority ceiling.
+Recovered total: **€2,793**. North Shelter retains 34 beds.
 
-Each signed proposal scope binds:
+## PACT authorization
+
+Human approval signs an ephemeral ECDSA P-256 authorization capsule.
+
+Every proposal scope binds:
 
 - proposal ID
-- provider ID
-- provider origin
-- resource ID and human-readable label
+- provider ID and exact origin
+- resource ID and visible label
 - quantity and unit
 - unit cost and maximum cost
 - purpose
 - provider state version
 - proposal expiry
 
-The plan hash additionally binds:
+The plan hash also binds:
 
-- plan ID
-- incident ID
-- human-visible summary
-- human-visible rationale
+- plan ID and incident ID
+- human-visible summary and rationale
 - plan revision
-- maximum authority
-- the sorted exact proposal scopes
+- total authority ceiling
+- sorted proposal scopes
 
-The private signing key remains inside Relay Command memory and is never exposed as a WebMCP tool.
+The private key remains in Relay Command memory and is never exposed as a WebMCP tool.
 
-## PACT invariants
+Each provider independently rejects:
 
-A provider commit succeeds only when every invariant holds:
+- missing or invalid signatures
+- wrong sessions
+- wrong origins
+- changed operation arguments
+- stale state versions
+- expired proposals or approval
+- aggregate authority escalation
+- incomplete same-origin batches
+- insufficient current capacity
 
-1. The approval signature verifies against the trusted Relay session public key.
-2. The approval belongs to the active Relay session.
-3. The approval and every included proposal are still live.
-4. The aggregate signed scope cost does not exceed the human ceiling.
-5. Every scope has internally consistent quantity and cost arithmetic.
-6. The proposal ID, provider, origin, resource, quantity, unit, price, purpose, version and expiry exactly match.
-7. The commit contains every approved proposal for that provider exactly once.
-8. Every proposal still targets the provider's current state version.
-9. The provider still has capacity for the entire local batch.
-10. No mutation occurs until all checks pass.
+A same-origin batch mutates nothing unless every local check passes.
 
-Any provider state advance invalidates every outstanding proposal from its previous version.
+Relay does **not** claim distributed ACID atomicity across unrelated websites. Cross-origin partial completion is represented through origin-bound receipts and must be handled by compensation or recovery in a production protocol.
 
-## Dynamic WebMCP surface
+## Machine-readable release tools
 
-Tool availability communicates application state:
+Relay Command exposes:
 
-```text
-DRAFT
-  relay_request_approval absent
+### `relay_diagnose_webmcp`
 
-VALIDATED
-  relay_request_approval available
+Returns:
 
-AWAITING_APPROVAL
-  agent call suspended on human decision
+- registration API availability
+- Relay tool registration state
+- provider-origin discovery state
+- read-only execution probes against all providers
+- fixed bridge status
+- `toolchange` capture history
+- dynamic capability creation and teardown evidence
 
-APPROVED
-  exact provider commit tools available
+### `relay_get_audit_bundle`
 
-STALE / REJECTED / COMMITTED
-  obsolete authority tools removed
-```
+Captures the final plan and mesh state and binds them to a canonical SHA-256 digest.
 
-Provider commit tools also disappear when proposals expire, commit or become stale. `AbortSignal` is used as the capability revocation mechanism.
+### `relay_bridge_status`
 
-A live capability panel listens for `toolchange` and renders the current federated tool surface without trusting tool metadata as HTML.
+Shows the exact fixed origin-to-tool mappings and which wrappers are currently active.
 
-## Browser trust boundaries
-
-Relay Command and all three providers must run on distinct origins.
-
-The command boot gate rejects:
-
-- duplicated provider origins
-- a provider sharing the Relay Command origin
-- non-HTTPS production origins
-- production pages configured to delegate tools to localhost
-
-Cross-origin state messages are accepted only when both conditions hold:
-
-- `event.origin` equals the configured provider origin
-- `event.source` equals that provider's exact persistent iframe
-
-Provider iframes are mounted once. They are never recreated during planning, approval or commit, so their proposal state and dynamic WebMCP registrations remain stable.
-
-Providers accept a Relay public key only from their configured parent origin. They reject malformed keys, private key material and same-session public-key substitution.
-
-## Architecture
+## Repository architecture
 
 ```text
-┌─────────────────────────────────────────────────────────────────────┐
-│ Relay Command                                                      │
-│                                                                     │
-│  Incident constraints      Ephemeral P-256 signer                  │
-│  Cross-provider plan       Human consent sheet                     │
-│  Provenance stream         Live WebMCP proof runner                │
-│                                                                     │
-│  WebMCP tools:                                                      │
-│  relay_get_incident                                                │
-│  relay_get_mesh_state                                              │
-│  relay_stage_plan                                                  │
-│  relay_get_plan                                                    │
-│  relay_request_approval  [dynamic]                                 │
-│                                                                     │
-│  ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐     │
-│  │ Shelter Grid     │ │ Transit Ops      │ │ Supply Hub       │     │
-│  │ independent      │ │ independent      │ │ independent      │     │
-│  │ origin           │ │ origin           │ │ origin           │     │
-│  │ allow="tools"    │ │ allow="tools"    │ │ allow="tools"    │     │
-│  │ search/propose/  │ │ search/propose/  │ │ search/propose/  │     │
-│  │ commit           │ │ commit           │ │ commit           │     │
-│  └──────────────────┘ └──────────────────┘ └──────────────────┘     │
-└─────────────────────────────────────────────────────────────────────┘
+apps/
+  relay-command/       command, policy, consent, diagnostics and audit
+  shelter-grid/        independent shelter provider
+  transit-ops/         independent transport provider
+  supply-hub/          independent supply provider
+packages/
+  contracts/           shared protocol types
+  pact/                canonicalization, hashing, signing and verification
+  webmcp-runtime/      registration and race-safe dynamic capability lifecycle
+  provider-runtime/    versioned proposal and atomic local commit runtime
+  simulation/          deterministic data and hard-constraint policy
+scripts/
+  integrity-smoke.ts
+  release-audit.ts
+  deploy-preflight.mjs
+  deployment-smoke.mjs
+deploy/
+  Dockerfile
+  Caddyfile
+  nginx.conf
+  entrypoint.sh
+docs/
+  chatgpt-validation.md
+  submission-readiness.md
+  demo-script.md
+  pact-v0.1.md
+  threat-model.md
 ```
 
-Agent actuation uses WebMCP. Explicit-origin `postMessage` synchronizes human-visible provider state and receipts into Relay Command.
-
-See:
-
-- [`docs/architecture.md`](docs/architecture.md)
-- [`docs/pact-v0.1.md`](docs/pact-v0.1.md)
-- [`docs/threat-model.md`](docs/threat-model.md)
-- [`docs/evaluation.md`](docs/evaluation.md)
-- [`docs/demo-script.md`](docs/demo-script.md)
-
-## Run locally
+## Local verification
 
 Requirements:
 
-- Node.js 22+
-- a browser surface with WebMCP testing enabled
+- Node.js 22
+- npm 10
 
 ```bash
-npm install
+npm install --no-audit --no-fund
 npm run verify
-npm run dev
 ```
 
 `npm run verify` runs:
 
 ```text
 TypeScript validation
-→ adversarial protocol and lifecycle tests
-→ production builds for all four applications
+→ dependency-free PACT smoke
+→ hostile authorization audit
+→ unit and adversarial tests
+→ all four production builds
+```
+
+Local development:
+
+```bash
+npm run dev
 ```
 
 Local origins:
@@ -265,83 +242,83 @@ Local origins:
 | Transit Ops | `http://localhost:5175` |
 | Supply Hub | `http://localhost:5176` |
 
-The different ports intentionally create different origins.
+## Four-origin HTTPS deployment
 
-## Production configuration
+Relay ships a Caddy and Docker Compose stack. Four real hostnames must resolve to the deployment server.
 
-Relay Command:
+```bash
+cp .env.deploy.example .env.deploy
+# replace every placeholder
 
-```env
-VITE_SHELTER_ORIGIN=https://shelter.example.com
-VITE_TRANSIT_ORIGIN=https://transit.example.com
-VITE_SUPPLY_ORIGIN=https://supply.example.com
+npm run deploy:check
+npm run deploy:check:dns
+
+docker compose --env-file .env.deploy build --pull
+docker compose --env-file .env.deploy up -d
+docker compose --env-file .env.deploy ps
+
+npm run deploy:smoke
 ```
 
-Each provider:
+Caddy obtains HTTPS certificates and routes each hostname to a separate static application container.
 
-```env
-VITE_RELAY_ORIGIN=https://relay.example.com
-```
+Exact deployment and ChatGPT validation steps:
 
-All four production applications require HTTPS and distinct origins.
+- [`docs/chatgpt-validation.md`](docs/chatgpt-validation.md)
+- [`docs/submission-readiness.md`](docs/submission-readiness.md)
 
-## Repository map
+## Actual ChatGPT validation gate
+
+A browser harness is not sufficient evidence.
+
+Before merge, the deployed Relay URL must be opened in ChatGPT's supported built-in browser and must prove:
+
+- Relay tools register
+- all three provider origins are discoverable by Relay Command
+- provider tools execute, not merely list
+- one real discovery and proposal call succeeds against every provider
+- dynamic wrappers appear and disappear with `toolchange`
+- the full human approval and provider commit path completes
+- final receipts and audit digest are captured
+
+Use this exact command in ChatGPT:
 
 ```text
-apps/
-  relay-command/       command, plan, consent, provenance and proof surface
-  shelter-grid/        independent shelter provider
-  transit-ops/         independent transport provider
-  supply-hub/          independent supply provider
-packages/
-  contracts/           shared protocol and message types
-  pact/                canonicalization, hashing, signing and verification
-  webmcp-runtime/      registration and race-safe dynamic tool lifecycle
-  provider-runtime/    versioned proposal and atomic commit state machine
-  simulation/          deterministic incident data and policy engine
-docs/
-  architecture.md
-  pact-v0.1.md
-  threat-model.md
-  evaluation.md
-  demo-script.md
-  judging.md
+On the open Relay page, call relay_diagnose_webmcp with:
+{"executeReadProbes":true}
+Return the raw tool result JSON without summarizing it.
 ```
 
-## Security posture and non-claims
+Do not merge PR #1 until the raw deployed ChatGPT evidence passes.
 
-Relay is a competition reference implementation, not production emergency infrastructure.
+## Demo recording
 
-It demonstrates a narrower, testable claim:
+The final script targets 2:45 and leaves margin beneath three minutes:
 
-> Independent WebMCP sites can be composed into one human-governed workflow while exact consent, origin scope, capability revocation and stale-state protection remain visible and enforceable.
+- [`docs/demo-script.md`](docs/demo-script.md)
 
-Relay does not claim:
+A **Reset scenario** control reloads all four deterministic browser documents.
 
-- distributed ACID transactions across unrelated websites
-- production-grade emergency dispatch reliability
-- durable user identity or non-repudiation
-- safety after arbitrary code execution on a trusted origin
+The optional proof console is disabled in the judging URL and can be enabled only with:
 
-A production system would move signing into an authenticated service or hardware-backed key, add durable audit storage and use domain-specific compensation for cross-origin partial failure.
+```text
+?proof=1
+```
 
-## Competition status
+It is harness evidence, not actual ChatGPT evidence.
 
-- [x] four-origin federated application
-- [x] imperative WebMCP discovery and proposal tools
-- [x] dynamic approval and commit capabilities
-- [x] deterministic constraint engine
-- [x] suspended human approval call
-- [x] exact P-256 signed PACT authorization
-- [x] complete same-origin atomic batches
-- [x] automatic proposal expiry and capability revocation
-- [x] stale-state failure and recovery path
-- [x] persistent provider frames and source-bound messaging
-- [x] judge-facing live WebMCP proof runner
-- [x] adversarial protocol, policy and lifecycle tests
-- [ ] recorded supported-browser evidence
-- [ ] production URLs
-- [ ] final public three-minute video
+## Release discipline
+
+- `main` remains frozen
+- all release work stays on `build/pact-vertical-slice`
+- PR #1 remains draft until every external gate passes
+- merge through PR #1 only
+- preserve history
+- create the submission tag only after merge
+
+Current recommendation is recorded in:
+
+- [`docs/submission-readiness.md`](docs/submission-readiness.md)
 
 ## License
 

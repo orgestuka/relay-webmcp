@@ -1,0 +1,89 @@
+name: relay-webmcp
+
+x-relay-build: &relay-build
+  context: .
+  dockerfile: deploy/Dockerfile
+  args:
+    VITE_RELAY_ORIGIN: https://${RELAY_HOST}
+    VITE_SHELTER_ORIGIN: https://${SHELTER_HOST}
+    VITE_TRANSIT_ORIGIN: https://${TRANSIT_HOST}
+    VITE_SUPPLY_ORIGIN: https://${SUPPLY_HOST}
+    VITE_ENABLE_PROOF_RUNNER: "0"
+
+x-relay-app: &relay-app
+  image: relay-webmcp:${RELAY_IMAGE_TAG:-submission}
+  build: *relay-build
+  restart: unless-stopped
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  tmpfs:
+    - /usr/share/nginx/html:rw,noexec,nosuid,size=32m
+    - /var/cache/nginx:rw,noexec,nosuid,size=16m
+    - /var/run:rw,noexec,nosuid,size=4m
+  networks:
+    - relay
+  healthcheck:
+    test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/healthz | grep -qx ok"]
+    interval: 5s
+    timeout: 3s
+    retries: 20
+    start_period: 10s
+
+services:
+  relay-command:
+    <<: *relay-app
+    environment:
+      RELAY_APP: relay-command
+
+  shelter-grid:
+    <<: *relay-app
+    environment:
+      RELAY_APP: shelter-grid
+
+  transit-ops:
+    <<: *relay-app
+    environment:
+      RELAY_APP: transit-ops
+
+  supply-hub:
+    <<: *relay-app
+    environment:
+      RELAY_APP: supply-hub
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      relay-command:
+        condition: service_healthy
+      shelter-grid:
+        condition: service_healthy
+      transit-ops:
+        condition: service_healthy
+      supply-hub:
+        condition: service_healthy
+    environment:
+      RELAY_HOST: ${RELAY_HOST}
+      SHELTER_HOST: ${SHELTER_HOST}
+      TRANSIT_HOST: ${TRANSIT_HOST}
+      SUPPLY_HOST: ${SUPPLY_HOST}
+      ACME_EMAIL: ${ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - relay
+
+networks:
+  relay:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

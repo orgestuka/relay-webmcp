@@ -16,7 +16,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,17 +26,54 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - name: Dependency-free cryptographic smoke
-        run: npm run smoke
-
-      - name: Install exact direct dependencies
+      - name: Install exact direct dependencies and workspace links
         run: npm install --no-audit --no-fund
 
-      - name: Typecheck protocol and applications
-        run: npm run typecheck
+      - name: Full repository verification
+        run: npm run verify
 
-      - name: Adversarial protocol policy and lifecycle tests
-        run: npm test
+      - name: Deployment manifest preflight
+        run: |
+          cat > /tmp/relay-ci.env <<'EOF'
+          RELAY_HOST=relay.ci.test
+          SHELTER_HOST=shelter.ci.test
+          TRANSIT_HOST=transit.ci.test
+          SUPPLY_HOST=supply.ci.test
+          ACME_EMAIL=ci@relay.test
+          RELAY_IMAGE_TAG=ci
+          EOF
+          node scripts/deploy-preflight.mjs /tmp/relay-ci.env
+          docker compose --env-file /tmp/relay-ci.env config --quiet
 
-      - name: Production builds
-        run: npm run build
+      - name: Production container build
+        run: |
+          docker build \
+            --file deploy/Dockerfile \
+            --build-arg VITE_RELAY_ORIGIN=https://relay.ci.test \
+            --build-arg VITE_SHELTER_ORIGIN=https://shelter.ci.test \
+            --build-arg VITE_TRANSIT_ORIGIN=https://transit.ci.test \
+            --build-arg VITE_SUPPLY_ORIGIN=https://supply.ci.test \
+            --build-arg VITE_ENABLE_PROOF_RUNNER=0 \
+            --tag relay-webmcp:ci \
+            .
+
+      - name: Smoke every static application image
+        run: |
+          set -euo pipefail
+          port=18080
+          for app in relay-command shelter-grid transit-ops supply-hub; do
+            name="relay-smoke-${app}"
+            docker run --detach --rm --name "$name" \
+              --env RELAY_APP="$app" \
+              --publish "127.0.0.1:${port}:80" \
+              relay-webmcp:ci
+            for attempt in $(seq 1 30); do
+              if curl --fail --silent "http://127.0.0.1:${port}/healthz" | grep -qx ok; then
+                break
+              fi
+              sleep 1
+            done
+            curl --fail --silent "http://127.0.0.1:${port}/" | grep -q 'id="app"'
+            docker stop "$name"
+            port=$((port + 1))
+          done

@@ -1,0 +1,55 @@
+{
+  "schema": "relay.release-audit.v1",
+  "sourceBranch": "build/pact-vertical-slice",
+  "sourceSha": "9c7880457516c6b4d0a94306caf0dee2b66ad362",
+  "executedAt": "2026-08-29T09:00:41.543Z",
+  "environment": {
+    "node": "v22.16.0"
+  },
+  "command": "node --experimental-strip-types scripts/release-audit.ts",
+  "sourceMode": "Current PACT, policy and contract files reconstructed from the connected private GitHub branch.",
+  "result": "pass",
+  "cases": {
+    "normal_canonical_policy": {
+      "pass": true,
+      "evidence": "7/7 deterministic checks pass at EUR 2733"
+    },
+    "lower_authority_valid": {
+      "pass": true,
+      "evidence": "EUR 2800 ceiling accepts exact EUR 2733 aggregate"
+    },
+    "aggregate_budget_escalation_rejected": {
+      "pass": true,
+      "evidence": "AGGREGATE_COST_EXCEEDED"
+    },
+    "tampered_payload_rejected": {
+      "pass": true,
+      "evidence": "signature verification false"
+    },
+    "expired_token_rejected": {
+      "pass": true,
+      "evidence": "APPROVAL_EXPIRED"
+    },
+    "wrong_session_rejected": {
+      "pass": true,
+      "evidence": "SESSION_MISMATCH"
+    },
+    "wrong_origin_rejected": {
+      "pass": true,
+      "evidence": "ORIGIN_SCOPE_MISMATCH"
+    },
+    "wrong_state_version_rejected": {
+      "pass": true,
+      "evidence": "VERSION_SCOPE_MISMATCH"
+    },
+    "partial_same_origin_batch_rejected": {
+      "pass": true,
+      "evidence": "INCOMPLETE_PROVIDER_BATCH"
+    },
+    "complete_same_origin_batch_authorized": {
+      "pass": true,
+      "evidence": "exact two-scope shelter batch accepted"
+    }
+  },
+  "boundary": "Pure authorization and policy evidence only. Provider capacity mutation, partial cross-provider completion, audit capture and ChatGPT compatibility remain deployed end-to-end gates."
+}

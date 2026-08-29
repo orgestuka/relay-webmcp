@@ -1,0 +1,25 @@
+{
+  "schema": "relay.local-core-smoke.v1",
+  "sourceBranch": "build/pact-vertical-slice",
+  "sourceSha": "9c7880457516c6b4d0a94306caf0dee2b66ad362",
+  "executedAt": "2026-08-29T09:00:01Z",
+  "environment": {
+    "node": "v22.16.0",
+    "typescript": "5.8.3-global"
+  },
+  "commands": [
+    "node --experimental-strip-types scripts/integrity-smoke.ts",
+    "tsc -p tsconfig.json --noEmit"
+  ],
+  "sourceMode": "Current core files reconstructed byte-for-byte from the connected private GitHub branch because this execution environment cannot resolve github.com.",
+  "result": "pass",
+  "output": {
+    "pact": "pass",
+    "policy": "pass",
+    "dynamicTool": "pass",
+    "canonicalTotal": 2733,
+    "scopes": 6,
+    "typecheck": "pass"
+  },
+  "boundary": "This is pure core evidence, not a clean full checkout, production build, Docker deployment, browser harness or actual ChatGPT site-tools evidence."
+}

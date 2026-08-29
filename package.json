@@ -14,8 +14,12 @@
     "build": "npm run build -w @relay/command && npm run build -w @relay/shelter-grid && npm run build -w @relay/transit-ops && npm run build -w @relay/supply-hub",
     "test": "vitest run",
     "smoke": "node --experimental-strip-types scripts/integrity-smoke.ts",
+    "audit:release": "node --experimental-strip-types scripts/release-audit.ts",
     "typecheck": "tsc -p tsconfig.check.json --noEmit",
-    "verify": "npm run typecheck && npm run smoke && npm test && npm run build"
+    "verify": "npm run typecheck && npm run smoke && npm run audit:release && npm test && npm run build",
+    "deploy:check": "node scripts/deploy-preflight.mjs .env.deploy",
+    "deploy:check:dns": "node scripts/deploy-preflight.mjs .env.deploy --dns",
+    "deploy:smoke": "node scripts/deployment-smoke.mjs .env.deploy"
   },
   "devDependencies": {
     "concurrently": "9.2.1",

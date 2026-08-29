@@ -1,226 +1,313 @@
-# Three-minute demo script
+# Final 2:45 demo script
 
-## Core rule
+Target runtime: **2:45**
 
-The video must prove one idea:
+Hard stop: **2:50**
 
-> The agent can compose across independent websites. It cannot expand or exercise consequential authority without the human.
+The video proves one claim:
 
-Do not narrate every implementation detail. Show the protocol through state changes.
+> One agent composes work across three independent websites. The human controls the exact consequential transaction.
 
-## Recording setup
+Do not add another workflow, provider, explanation section or technical detour.
 
-Before recording:
+## Before recording
 
-- open Relay Command in the supported browser surface
-- verify all three provider frames show `WebMCP live`
-- verify Relay shows `3/3 PROVIDERS`
-- collapse unrelated browser chrome
-- keep the capability surface visible
-- keep the proof console visible but collapsed until needed
-- reset all four applications to deterministic initial state
-- use a 16:9 viewport large enough to show Relay and provider frames
+1. Deploy four HTTPS origins.
+2. Run `npm run deploy:smoke`.
+3. Complete the actual ChatGPT checklist in `chatgpt-validation.md`.
+4. Open the normal Relay URL, not `?direct=1` and not `?proof=1`.
+5. Click **Reset scenario**.
+6. Confirm:
+   - `WebMCP LIVE`
+   - `3/3 PROVIDERS`
+   - each provider shows `signed Relay session`
+   - no proposal or receipt counters are nonzero
+7. Keep the live capability panel visible.
+8. Hide DevTools and unnecessary browser chrome.
+9. Use one continuous screen recording. Cut only model latency and repetitive tool transitions.
 
-## 0:00 to 0:12: hook
+## Exact ChatGPT prompt
 
-**Shot:** Relay Command with all three provider frames and the live capability panel.
+```text
+Use Relay's fixed bridge tools to evacuate all 42 Riverside residents before 18:00.
 
-**Narration:**
+Hard constraints:
+- shelter all 42 residents
+- provide transport for all 42
+- provide at least 9 wheelchair-accessible positions
+- preserve at least 20 unallocated beds at North Shelter
+- provide 42 evacuation kits
+- provide 9 mobility medical kits
+- keep total authority at or below €3,000
+- create non-binding proposals first
+- do not commit anything before I approve the exact Relay plan
 
-> “This agent can coordinate an evacuation across three independent websites. It can prepare everything. It cannot reserve a single bed, vehicle or supply kit until the human approves the exact transaction.”
+Use the provider tools, stage the returned proposal IDs with relay_stage_plan, then call relay_request_approval and stop for my decision.
+```
 
-Show the four distinct origins briefly.
+## 0:00–0:12 — Hook
 
-## 0:12 to 0:30: the objective
+**Shot**
 
-**Shot:** Enter the prompt in ChatGPT's browser agent.
+Relay Command with all three provider websites and the live capability surface visible.
 
-> Evacuate all 42 Riverside residents before 18:00. Provide at least 9 wheelchair-accessible positions, preserve 20 beds at North Shelter and stay below €5,000. Prepare everything, but do not commit any reservation until I approve the exact plan.
+**Narration**
 
-**Narration:**
+> “This agent can coordinate a 42-person evacuation across three independent websites. It can prepare everything. It cannot reserve one bed, vehicle or supply kit until the human approves the exact transaction.”
 
-> “Relay is not one site pretending to have four databases. Each provider owns its own state and WebMCP tools.”
+Briefly show the four HTTPS origins.
 
-## 0:30 to 0:58: compose through WebMCP
+## 0:12–0:27 — Human objective
 
-**Shot:** Accelerated but readable sequence of tool invocations.
+Paste the exact prompt.
 
-The agent:
+**Narration**
 
-1. reads the incident
-2. queries all three provider origins
-3. creates six non-binding proposals
-4. stages the exact proposal IDs in Relay
+> “Each provider owns its own state and execution. Relay only composes their WebMCP capabilities.”
 
-The canonical first plan is:
+Cut model thinking time.
 
-- East Shelter: 18 beds
-- South Shelter: 24 beds
-- Rapid Bus: 32 seats
-- Access Shuttle: 10 accessible seats
-- Evacuation Kits: 42
-- Mobility Medical Kits: 9
+## 0:27–0:54 — Discover and stage
 
-Total: **€2,733**
+Show a fast readable sequence:
 
-**Visual proof:**
+```text
+relay_bridge_shelter_find_capacity
+relay_bridge_transit_find_accessible_routes
+relay_bridge_supply_check_stock
+```
 
-- provider proposal counters increase
-- Relay plan table fills with exact origins and versions
-- all seven deterministic policy checks pass
-- `relay_request_approval` appears in the live capability surface
+Then six non-binding proposals:
 
-## 0:58 to 1:12: human amendment
+```text
+East Shelter          18 beds
+South Shelter         24 beds
+Rapid Bus 32          32 seats
+Access Shuttle 10     10 accessible seats
+Evacuation Kits       42 kits
+Mobility Medical Kits 9 kits
+```
 
-**Shot:** Change maximum authority from €5,000 to €3,000 in Relay.
+Then:
 
-**Narration:**
+```text
+relay_stage_plan
+```
 
-> “The human is not watching automation. The human can narrow it. The visible summary, rationale, revision, operation scopes and €3,000 ceiling become part of the signed authorization.”
+**Visual proof**
 
-## 1:12 to 1:32: human becomes an execution dependency
+- provider proposal counters rise
+- exact provider origins and versions appear in Relay
+- seven deterministic checks pass
+- total is €2,733
+- `relay_request_approval` appears
+- provider commit wrappers are visible but require signed authority
 
-**Shot:** The agent calls `relay_request_approval`.
+**Narration**
 
-The tool call remains pending and the consent sheet opens.
+> “These are quotes, not commitments. Relay rejects plans that merely sound right but fail a hard constraint.”
 
-**Narration:**
+## 0:54–1:05 — Human narrows authority
 
-> “The agent is now paused inside the tool call. No token exists until this human decides.”
+Set the authority ceiling to exactly:
 
-Do not approve yet.
+```text
+€3,000
+```
 
-## 1:32 to 1:48: the failure moment
+**Narration**
 
-**Shot:** Click **Inject disruption** in Shelter Grid.
+> “The human is not watching automation. The human narrows it. This €3,000 ceiling becomes part of the signed authorization.”
 
-South Shelter drops from 24 to 12 beds. Shelter Grid advances its state version.
+## 1:05–1:22 — Consent becomes an execution dependency
 
-**Visual proof:**
+Let ChatGPT call:
 
-- shelter proposals disappear
-- shelter commit capability disappears
-- Relay changes to `STALE`
-- the suspended approval call resolves as a stale-plan failure
+```text
+relay_request_approval
+```
 
-**Narration:**
+The approval sheet opens while the ChatGPT tool call remains pending.
+
+Hold for two seconds on:
+
+- exact operations
+- provider origins
+- state versions
+- costs
+- plan digest
+- two-minute expiry
+
+**Narration**
+
+> “The agent is now paused inside the tool call. No approval token exists until this human decides.”
+
+## 1:22–1:39 — The unforgettable failure
+
+Do not approve.
+
+Click the red consent-sheet control:
+
+```text
+Change shelter capacity
+```
+
+**Visual proof**
+
+- South Shelter falls from 24 to 12
+- Shelter Grid advances from v1 to v2
+- stale shelter proposals disappear
+- shelter commit wrapper disappears
+- `relay_request_approval` disappears
+- plan turns red and `STALE`
+- the suspended ChatGPT call resolves with stale-plan failure
+
+**Narration**
 
 > “The plan was valid one second ago. It is invalid now. Relay revokes the capability instead of executing stale work.”
 
-This is the memorable moment. Leave it on screen long enough to register.
+Do not cut this moment too quickly.
 
-## 1:48 to 2:08: recover, do not override
+## 1:39–1:58 — Agent recovers, not overrides
 
-**Shot:** The agent re-queries Shelter Grid and proposes:
+Ask ChatGPT:
 
-- East Shelter: 18 beds
-- South Shelter: 12 beds
-- North Shelter: 12 beds
+```text
+Recover the stale Relay plan. Re-query and replace only the invalid Shelter Grid proposals. Reuse Transit Ops and Supply Hub proposals only if their provider state versions remain current. Restage, then request exact approval again.
+```
 
-Transit and supply proposals remain valid because those provider versions did not change.
+Expected new shelter work:
 
-The recovered total is **€2,793**. North Shelter retains 34 beds, above the protected reserve.
+```text
+East Shelter   18 beds
+South Shelter  12 beds
+North Shelter  12 beds
+```
 
-The agent restages and requests approval again.
+Recovered total:
 
-**Narration:**
+```text
+€2,793
+```
 
-> “The agent recovers by composing new valid work. It cannot force the old plan through.”
+North Shelter retains 34 beds.
 
-## 2:08 to 2:28: exact consent
+**Narration**
 
-**Shot:** Hold on the approval sheet.
+> “The agent can recover by composing new valid work. It cannot force the obsolete plan through.”
+
+## 1:58–2:17 — Exact human approval
+
+The approval sheet reopens.
+
+Show the changed Shelter Grid version and recovered operations.
+
+Click:
+
+```text
+Approve & sign PACT token
+```
+
+**Narration**
+
+> “This is not permission to complete the objective by any means. It authorizes these exact operations, at these exact origins and versions, for two minutes.”
+
+## 2:17–2:36 — Independent provider verification
+
+ChatGPT calls:
+
+```text
+relay_bridge_shelter_commit_reservation
+relay_bridge_transit_commit_reservation
+relay_bridge_supply_commit_reservation
+```
 
 Show:
 
-- proposal IDs
-- provider origins
-- resource and quantity
-- provider state versions
-- per-operation cost
-- €3,000 maximum authority
-- plan hash
-- two-minute expiry
+- each provider inventory changes only after its own verification
+- provider versions advance
+- commit wrappers disappear after use
+- six receipts enter Relay
+- plan reaches `COMMITTED`
 
-Click **Approve & sign PACT token**.
+**Narration**
 
-**Narration:**
+> “Each website verifies the human authorization independently. No provider is asked to trust the agent.”
 
-> “This is not permission to complete the objective by any means. It is authority for these exact operations, at these exact origins and versions, for two minutes.”
+## 2:36–2:45 — Receipts, digest, thesis
 
-## 2:28 to 2:48: transact
+Call or display the result of:
 
-**Shot:** The agent presents the token to each provider's commit tool.
+```text
+relay_get_audit_bundle
+```
 
 Show:
 
-- complete same-origin batches
-- provider inventory changing only after verification
-- state versions advancing
-- six origin-bound receipts entering Relay
-- plan reaching `COMMITTED`
-- commit capabilities disappearing
+- `COMMITTED`
+- six receipts
+- final SHA-256 digest
+- PACT rail
 
-**Narration:**
+**Narration**
 
-> “Each website verifies the human authorization independently. Relay does not ask the providers to trust the agent.”
+> “When agents become the interface, websites become visible trust and execution boundaries. Agents compose. Humans authorize. This is Relay.”
 
-## 2:48 to 2:58: close
-
-**Shot:** PACT rail, final `COMMITTED` status and architecture diagram.
-
-**Narration:**
-
-> “When agents become the interface, websites do not disappear. They become visible trust and execution boundaries. Agents compose. Humans authorize. This is Relay.”
-
-End on:
+End frame:
 
 ```text
 PACT
 Propose → Amend → Consent → Transact
 ```
 
-## Deterministic fallback recording
+## Mandatory visible evidence
 
-The built-in proof console executes the same flow through only `getTools()` and `executeTool()`.
+The final cut must visibly contain:
 
-Use it when:
-
-- the external agent chooses an unnecessarily slow tool sequence
-- live narration needs a clean second take
-- judges need deterministic reproduction after the video
-
-The fallback must still show the real provider frames, capability changes, human consent sheet and receipts. Do not replace the product UI with a prerecorded simulation.
+- four distinct HTTPS origins
+- three independent provider websites
+- six initial non-binding proposals
+- €2,733 initial plan
+- €3,000 human authority ceiling
+- suspended approval call
+- Shelter Grid v1 → v2
+- stale plan state
+- capability disappearance
+- recovered €2,793 plan
+- exact approval sheet
+- three independent provider commit calls
+- six receipts
+- final audit digest
+- final `COMMITTED` state
 
 ## Editing rules
 
 Allowed:
 
 - remove model thinking time
-- speed up repetitive discovery and proposal calls
+- speed up repetitive read/proposal calls
 - use hard cuts between successful tool results
-- zoom into state and capability changes
+- zoom into versions, capability changes and consent fields
 
-Do not:
+Forbidden:
 
-- hide a tool failure that changes the story
-- imply cross-origin atomicity
-- call the proof runner an external AI model
-- spend time on package installation or deployment
-- show source code for more than a few seconds
-- add unrelated workflows
+- hiding a failure that changes the story
+- implying distributed ACID across providers
+- calling the optional proof runner “ChatGPT”
+- using `?proof=1` in the final judging shot
+- adding a second scenario
+- adding unrelated source-code narration
+- showing deployment or package installation
 
-## Final pre-export checklist
+## Rehearsal gate
 
-- [ ] total runtime is below three minutes
-- [ ] four origins are visible
-- [ ] six initial proposals are visible
-- [ ] human amendment is visible
-- [ ] approval call visibly waits
-- [ ] disruption visibly changes provider version
-- [ ] stale capability disappears
-- [ ] recovered plan is valid
-- [ ] exact consent fields are legible
-- [ ] provider receipts are visible
-- [ ] final state is `COMMITTED`
-- [ ] final line is the product thesis, not a feature list
+Before recording the final video:
+
+- [ ] successful path completed three consecutive times
+- [ ] stale/recovery path completed three consecutive times
+- [ ] reset returns all providers to v1 and zero proposals/receipts
+- [ ] total initial runtime is 2:40–2:50 after cuts
+- [ ] capability creation and teardown are legible at normal playback speed
+- [ ] no hidden click is required outside Relay and ChatGPT
+- [ ] no browser console error occurs
+- [ ] final public video is under three minutes

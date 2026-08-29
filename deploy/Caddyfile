@@ -1,0 +1,33 @@
+{
+  email {$ACME_EMAIL}
+  admin off
+}
+
+(relay_common) {
+  encode zstd gzip
+  header {
+    -Server
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "no-referrer"
+  }
+}
+
+{$RELAY_HOST} {
+  import relay_common
+  reverse_proxy relay-command:80
+}
+
+{$SHELTER_HOST} {
+  import relay_common
+  reverse_proxy shelter-grid:80
+}
+
+{$TRANSIT_HOST} {
+  import relay_common
+  reverse_proxy transit-ops:80
+}
+
+{$SUPPLY_HOST} {
+  import relay_common
+  reverse_proxy supply-hub:80
+}
