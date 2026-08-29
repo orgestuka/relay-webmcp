@@ -1,12 +1,7 @@
 import { registerTool, toolOutput } from "@relay/webmcp-runtime";
+import { normalizeReleaseSha, validReleaseSha } from "./release-provenance";
 
-const compiledSha = String(import.meta.env.VITE_RELEASE_SHA ?? "").trim().toLowerCase();
-
-function validSha(value: unknown): value is string {
-  return typeof value === "string"
-    && /^[a-f0-9]{40}$/.test(value)
-    && !/^0+$/.test(value);
-}
+const compiledSha = normalizeReleaseSha(import.meta.env.VITE_RELEASE_SHA);
 
 async function readReleaseIdentity(): Promise<string> {
   let manifest: unknown = null;
@@ -22,7 +17,7 @@ async function readReleaseIdentity(): Promise<string> {
     });
     responseStatus = response.status;
     responseOk = response.ok;
-    edgeSha = response.headers.get("x-relay-release")?.trim().toLowerCase() ?? null;
+    edgeSha = normalizeReleaseSha(response.headers.get("x-relay-release")) || null;
     try {
       manifest = JSON.parse(await response.text()) as unknown;
     } catch (error) {
@@ -38,13 +33,13 @@ async function readReleaseIdentity(): Promise<string> {
   const record = manifest && typeof manifest === "object" && !Array.isArray(manifest)
     ? manifest as Record<string, unknown>
     : null;
-  const manifestSha = typeof record?.sha === "string" ? record.sha.toLowerCase() : null;
-  const compiledValid = validSha(compiledSha);
-  const edgeValid = validSha(edgeSha);
+  const manifestSha = normalizeReleaseSha(record?.sha) || null;
+  const compiledValid = validReleaseSha(compiledSha);
+  const edgeValid = validReleaseSha(edgeSha);
   const manifestValid = responseOk
     && record?.schema === "relay.release.v1"
     && record?.app === "relay-command"
-    && validSha(manifestSha);
+    && validReleaseSha(manifestSha);
   const consistent = compiledValid
     && edgeValid
     && manifestValid
