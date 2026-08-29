@@ -6,6 +6,7 @@ interface ImportMetaEnv {
   readonly VITE_SUPPLY_ORIGIN?: string;
   readonly VITE_RELAY_ORIGIN?: string;
   readonly VITE_ENABLE_PROOF_RUNNER?: string;
+  readonly VITE_RELEASE_SHA?: string;
 }
 
 interface ImportMeta {
