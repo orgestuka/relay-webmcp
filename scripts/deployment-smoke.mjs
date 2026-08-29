@@ -41,6 +41,10 @@ function hstsPass(value) {
   return maxAge ? Number(maxAge) >= 31_536_000 : false;
 }
 
+function validReleaseSha(value) {
+  return /^[a-f0-9]{40}$/.test(String(value ?? "")) && !/^0+$/.test(String(value));
+}
+
 function baseCspPass(value) {
   const policy = String(value ?? "");
   return policy.includes("default-src 'self'")
@@ -85,9 +89,39 @@ function securityHeaderCheck(name, headers, expectedOrigins) {
   };
 }
 
-async function probe(name, host, titleFragment, expectedOrigins) {
+async function releaseManifestCheck(origin, app, expectedSha, headers) {
+  const headerSha = headers.get("x-relay-release")?.trim().toLowerCase() ?? null;
+  const response = await fetchWithTimeout(`${origin}/release.json`, {
+    headers: { Accept: "application/json" },
+  });
+  let manifest = null;
+  let parseError = null;
+  try {
+    manifest = JSON.parse(await response.text());
+  } catch (error) {
+    parseError = error instanceof Error ? error.message : "release manifest parse failed";
+  }
+
+  const pass = response.ok
+    && validReleaseSha(expectedSha)
+    && headerSha === expectedSha
+    && manifest?.schema === "relay.release.v1"
+    && manifest?.app === app
+    && manifest?.sha === expectedSha;
+
+  return {
+    pass,
+    status: response.status,
+    expectedSha,
+    headerSha,
+    manifest,
+    parseError,
+  };
+}
+
+async function probe(name, app, host, titleFragment, expectedOrigins, expectedReleaseSha) {
   const origin = `https://${host}`;
-  const result = { name, origin, pass: false, checks: [], blocker: null };
+  const result = { name, app, origin, pass: false, checks: [], blocker: null };
   try {
     const health = await fetchWithTimeout(`${origin}/healthz`, { headers: { Accept: "text/plain" } });
     const healthText = await health.text();
@@ -112,6 +146,12 @@ async function probe(name, host, titleFragment, expectedOrigins) {
       id: "security_headers",
       pass: securityHeaders.pass,
       ...securityHeaders,
+    });
+    const release = await releaseManifestCheck(origin, app, expectedReleaseSha, page.headers);
+    result.checks.push({
+      id: "release_provenance",
+      pass: release.pass,
+      ...release,
     });
 
     const assets = [];
@@ -142,30 +182,33 @@ async function probe(name, host, titleFragment, expectedOrigins) {
 }
 
 const env = parseEnv(await readFile(envPath, "utf8"));
+const releaseSha = String(env.RELAY_RELEASE_SHA ?? "").trim().toLowerCase();
 const relayOrigin = env.RELAY_HOST ? `https://${env.RELAY_HOST}` : null;
 const shelterOrigin = env.SHELTER_HOST ? `https://${env.SHELTER_HOST}` : null;
 const transitOrigin = env.TRANSIT_HOST ? `https://${env.TRANSIT_HOST}` : null;
 const supplyOrigin = env.SUPPLY_HOST ? `https://${env.SUPPLY_HOST}` : null;
 
 const targets = [
-  ["relay", env.RELAY_HOST, "Relay", [shelterOrigin, transitOrigin, supplyOrigin].filter(Boolean)],
-  ["shelter", env.SHELTER_HOST, "Shelter Grid", relayOrigin ? [relayOrigin] : []],
-  ["transit", env.TRANSIT_HOST, "Transit Ops", relayOrigin ? [relayOrigin] : []],
-  ["supply", env.SUPPLY_HOST, "Supply Hub", relayOrigin ? [relayOrigin] : []],
+  ["relay", "relay-command", env.RELAY_HOST, "Relay", [shelterOrigin, transitOrigin, supplyOrigin].filter(Boolean)],
+  ["shelter", "shelter-grid", env.SHELTER_HOST, "Shelter Grid", relayOrigin ? [relayOrigin] : []],
+  ["transit", "transit-ops", env.TRANSIT_HOST, "Transit Ops", relayOrigin ? [relayOrigin] : []],
+  ["supply", "supply-hub", env.SUPPLY_HOST, "Supply Hub", relayOrigin ? [relayOrigin] : []],
 ];
 
 const probes = [];
-for (const [name, host, title, expectedOrigins] of targets) {
+for (const [name, app, host, title, expectedOrigins] of targets) {
   probes.push(host
-    ? await probe(name, host, title, expectedOrigins)
-    : { name, origin: null, pass: false, blocker: `Missing ${name.toUpperCase()} host` });
+    ? await probe(name, app, host, title, expectedOrigins, releaseSha)
+    : { name, app, origin: null, pass: false, blocker: `Missing ${name.toUpperCase()} host` });
 }
 
 const report = {
-  schema: "relay.deployment-smoke.v3",
+  schema: "relay.deployment-smoke.v4",
   executedAt: new Date().toISOString(),
-  evidenceType: "deployed-four-origin-http-origin-isolation-and-security-header-smoke",
-  pass: probes.every((probeResult) => probeResult.pass),
+  evidenceType: "deployed-four-origin-security-and-release-provenance-smoke",
+  releaseSha,
+  releaseShaValid: validReleaseSha(releaseSha),
+  pass: validReleaseSha(releaseSha) && probes.every((probeResult) => probeResult.pass),
   probes,
   nextGate: "Open the Relay origin in a fresh ChatGPT built-in browser context and call relay_diagnose_webmcp with executeReadProbes=true.",
 };
