@@ -129,6 +129,20 @@ function receiptMatchesProposal(receipt: CommitReceipt, proposal: ProviderPropos
     && Number.isFinite(Date.parse(receipt.committedAt));
 }
 
+function approvalExactlyMatchesPlan(
+  approval: ApprovalEvidence,
+  plan: PlanDraft,
+  planProposalIds: Set<string>,
+): boolean {
+  const scopes = approval.token.payload.scopes;
+  const scopeIds = new Set(scopes.map((scope) => scope.proposalId));
+  if (scopes.length !== scopeIds.size || !sameSet(scopeIds, planProposalIds)) return false;
+  return scopes.every((scope) => {
+    const proposal = plan.proposals.find((candidate) => candidate.proposalId === scope.proposalId);
+    return Boolean(proposal && scopeMatchesProposal(scope, proposal));
+  });
+}
+
 export async function evaluateAuditConsistency(
   planOutput: unknown,
   approvals: ApprovalEvidence[],
@@ -162,20 +176,25 @@ export async function evaluateAuditConsistency(
 
   const proposalIdsUnique = proposals.length === planProposalIds.size;
   const receiptIdsUnique = receipts.length === receiptProposalIds.size;
-  const scopeIdsUnique = matchingScopes.length === matchingScopeIds.size;
-  const approvalScopeCoverageExact = proposals.length > 0
-    && scopeIdsUnique
-    && sameSet(planProposalIds, matchingScopeIds);
-  const approvalScopesMatchPlan = approvalScopeCoverageExact
-    && proposals.every((proposal) =>
-      matchingScopes.some((scope) => scopeMatchesProposal(scope, proposal)));
+  const approvalScopeCoverageExact = Boolean(plan)
+    && proposals.length > 0
+    && matchingApprovals.length > 0
+    && matchingApprovals.every((approval) => {
+      const scopes = approval.token.payload.scopes;
+      return scopes.length === plan!.proposals.length
+        && sameSet(new Set(scopes.map((scope) => scope.proposalId)), planProposalIds);
+    });
+  const approvalScopesMatchPlan = Boolean(plan)
+    && approvalScopeCoverageExact
+    && matchingApprovals.every((approval) => approvalExactlyMatchesPlan(approval, plan!, planProposalIds));
   const approvalAuthorityMatchesPlan = Boolean(plan)
     && matchingApprovals.length > 0
-    && matchingApprovals.every((approval) => sameMoney(approval.token.payload.maximumCost, plan!.maxBudget))
-    && sameMoney(
-      matchingScopes.reduce((sum, scope) => sum + scope.maxCost, 0),
-      plan!.totalCost,
-    );
+    && matchingApprovals.every((approval) =>
+      sameMoney(approval.token.payload.maximumCost, plan!.maxBudget)
+      && sameMoney(
+        approval.token.payload.scopes.reduce((sum, scope) => sum + scope.maxCost, 0),
+        plan!.totalCost,
+      ));
   const receiptCoverageExact = proposals.length > 0
     && rawReceipts.length === receipts.length
     && receiptIdsUnique
