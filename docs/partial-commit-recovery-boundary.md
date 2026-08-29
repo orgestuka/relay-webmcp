@@ -2,7 +2,7 @@
 
 Status: submission-critical clarification for Relay v0.1
 
-This document overrides any earlier wording that implies an expired partial transaction can be repaired by simply staging a fresh plan.
+This document overrides any wording that implies an expired partial transaction can be repaired by merely staging a fresh plan.
 
 ## What Relay v0.1 guarantees
 
@@ -13,17 +13,20 @@ For an approved provider batch:
 1. every approved proposal for that provider must be submitted exactly once
 2. signature, session, origin, scope, state version, expiry and capacity are checked before mutation
 3. if any local check fails, that provider changes no capacity
-4. the agent may retry the exact complete provider batch while the human approval token remains live
+4. the agent may retry the exact complete provider batch while the human approval token and exact plan authority remain live
 
 This is the release-tested recovery path.
 
 ## Canonical partial-commit recovery drill
 
 1. Human approves the exact multi-provider plan.
-2. Shelter Grid commits successfully.
-3. Relay remains `APPROVED`, not `COMMITTED`.
-4. Transit Ops is called with only one of its two approved proposal IDs.
-5. Transit Ops returns:
+2. Exactly three top-level provider commit wrappers appear.
+3. Shelter Grid commits successfully.
+4. Shelter Grid's wrapper disappears after its batch closes.
+5. Relay remains `APPROVED`, not `COMMITTED`.
+6. Transit Ops and Supply Hub wrappers remain available while exact authority remains live.
+7. Transit Ops is called with only one of its two approved proposal IDs.
+8. Transit Ops returns:
 
 ```json
 {
@@ -32,11 +35,13 @@ This is the release-tested recovery path.
 }
 ```
 
-6. Transit Ops capacity and state version remain unchanged.
-7. The agent retries Transit Ops with the complete approved same-origin batch while the token is live.
-8. Transit Ops commits.
-9. Supply Hub commits.
-10. Relay reaches `COMMITTED` only after all six unique receipts arrive.
+9. Transit Ops capacity and state version remain unchanged.
+10. Audit bundle v2 returns `AUDIT_STATE_INCONSISTENT` with `committed: false` and `pass: false`.
+11. The agent retries Transit Ops with the complete approved same-origin batch while the token is live.
+12. Transit Ops commits and its wrapper disappears.
+13. Supply Hub commits.
+14. Relay reaches `COMMITTED` only after all six unique receipts arrive.
+15. Audit bundle v2 returns `ok: true` only after exact receipt closure.
 
 ## What Relay v0.1 does not claim
 
@@ -54,8 +59,9 @@ If the approval token expires after one provider has committed and before the ot
 
 - committed receipts remain visible
 - the plan remains honestly incomplete
-- `relay_get_audit_bundle` must fail final consistency
-- the application must not claim `COMMITTED`
+- remaining commit capability disappears
+- `relay_get_audit_bundle` fails exact final consistency
+- the application does not claim `COMMITTED`
 - a scenario reset is allowed only to start a separate isolated test run
 - a reset must never be described as rollback, compensation or recovery of the partial transaction
 
@@ -65,19 +71,22 @@ A production PACT version would require explicit reservation holds, compensation
 
 ## Release evidence required
 
-Save the raw actual-ChatGPT drill as:
+Save the raw actual-ChatGPT drill under ignored runtime evidence:
 
 ```text
-evidence/chatgpt/07-partial-commit-recovery.json
+.relay-artifacts/chatgpt/09-partial-commit-recovery.json
 ```
 
 It must prove:
 
 - one provider committed first
 - Relay remained `APPROVED`
+- the completed provider wrapper disappeared
 - incomplete Transit Ops batch failed
 - Transit Ops state did not change
+- audit bundle v2 failed while partial
 - retry with the exact full batch succeeded
 - final state became `COMMITTED` only after all receipts arrived
+- final audit bundle v2 passed
 
 Anything broader than this is a non-claim for v0.1.
