@@ -33,6 +33,10 @@ function validHostname(value) {
     && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label));
 }
 
+function validReleaseSha(value) {
+  return /^[a-f0-9]{40}$/.test(String(value ?? "")) && !/^0+$/.test(String(value));
+}
+
 async function fileExists(path) {
   try {
     await access(resolve(path), constants.R_OK);
@@ -52,12 +56,13 @@ async function resolveHostname(hostname) {
 }
 
 const result = {
-  schema: "relay.deploy-preflight.v1",
+  schema: "relay.deploy-preflight.v2",
   checkedAt: new Date().toISOString(),
   envPath,
   requireDns,
   pass: false,
   urls: {},
+  releaseSha: null,
   checks: [],
   blockers: [],
 };
@@ -89,12 +94,24 @@ try {
   result.checks.push({ id: "acme_email", pass: emailPass, value: env.ACME_EMAIL ?? null });
   if (!emailPass) result.blockers.push("ACME_EMAIL must be a valid operational email address.");
 
+  result.releaseSha = String(env.RELAY_RELEASE_SHA ?? "").trim().toLowerCase() || null;
+  const releaseShaPass = validReleaseSha(result.releaseSha);
+  result.checks.push({
+    id: "release_sha",
+    pass: releaseShaPass,
+    value: result.releaseSha,
+    instruction: "Set RELAY_RELEASE_SHA=$(git rev-parse HEAD) from the exact clean branch checkout being deployed.",
+  });
+  if (!releaseShaPass) result.blockers.push("RELAY_RELEASE_SHA must be the exact non-zero 40-character Git commit SHA being deployed.");
+
   const requiredFiles = [
     "compose.yaml",
     "deploy/Dockerfile",
     "deploy/Caddyfile",
     "deploy/nginx.conf",
     "deploy/entrypoint.sh",
+    "scripts/write-release-manifests.mjs",
+    "scripts/security-headers-check.mjs",
   ];
   for (const path of requiredFiles) {
     const present = await fileExists(path);
@@ -108,6 +125,7 @@ try {
       shelter: `https://${env.SHELTER_HOST}`,
       transit: `https://${env.TRANSIT_HOST}`,
       supply: `https://${env.SUPPLY_HOST}`,
+      relayReleaseManifest: `https://${env.RELAY_HOST}/release.json`,
       relayDirectDiagnostic: `https://${env.RELAY_HOST}/?direct=1`,
       relayProofHarness: `https://${env.RELAY_HOST}/?proof=1`,
     };
