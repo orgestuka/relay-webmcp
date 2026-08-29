@@ -20,7 +20,7 @@ const startedAt = Date.now();
 let outputPath = requestedOutputPath;
 
 const report = {
-  schema: "relay.release-gate.v2",
+  schema: "relay.release-gate.v3",
   startedAt: new Date(startedAt).toISOString(),
   mode: full ? "full-deploy" : "source",
   expectedBranch,
@@ -141,19 +141,26 @@ try {
 
   const packagePath = resolve("package.json");
   const lockPath = resolve("package-lock.json");
+  const nvmPath = resolve(".nvmrc");
   if (!record("package_json_present", existsSync(packagePath), { path: packagePath })) {
     throw new Error("package.json is missing.");
   }
+  if (!record("nvmrc_present", existsSync(nvmPath), { path: nvmPath })) {
+    throw new Error(".nvmrc is missing.");
+  }
   if (!record("package_lock_present", existsSync(lockPath), {
     path: lockPath,
-    recovery: "Generate package-lock.json with Node 22 and npm 10.9.2, review it and commit it before rerunning the gate.",
+    recovery: "Generate package-lock.json with Node 22.16.0 and npm 10.9.2, review it and commit it before rerunning the gate.",
   })) {
     throw new Error("package-lock.json is missing.");
   }
 
   const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
   const lockfile = JSON.parse(readFileSync(lockPath, "utf8"));
+  const nvmVersion = readFileSync(nvmPath, "utf8").trim();
+  const expectedNode = String(packageJson.engines?.node ?? "").trim();
   const expectedNpm = /^npm@(.+)$/.exec(String(packageJson.packageManager ?? ""))?.[1] ?? null;
+  const expectedNpmEngine = String(packageJson.engines?.npm ?? "").trim();
   const lockfilePass = typeof lockfile.lockfileVersion === "number" && lockfile.lockfileVersion >= 3;
   report.dependencyGraph = {
     lockfileVersion: lockfile.lockfileVersion ?? null,
@@ -162,19 +169,32 @@ try {
   if (!record("lockfile_version", lockfilePass, { actual: lockfile.lockfileVersion ?? null, minimum: 3 })) {
     throw new Error("package-lock.json must use lockfileVersion 3 or newer.");
   }
-  if (!record("npm_pin_declared", expectedNpm === "10.9.2", { actual: expectedNpm, expected: "10.9.2" })) {
-    throw new Error("package.json must pin packageManager to npm@10.9.2.");
+  if (!record("node_pin_declared", expectedNode === "22.16.0", { actual: expectedNode || null, expected: "22.16.0" })) {
+    throw new Error("package.json engines.node must pin 22.16.0.");
+  }
+  if (!record("nvm_pin_matches", nvmVersion === expectedNode, { actual: nvmVersion || null, expected: expectedNode })) {
+    throw new Error(".nvmrc must exactly match package.json engines.node.");
+  }
+  if (!record("npm_pin_declared", expectedNpm === "10.9.2" && expectedNpmEngine === expectedNpm, {
+    packageManager: expectedNpm,
+    engine: expectedNpmEngine || null,
+    expected: "10.9.2",
+  })) {
+    throw new Error("packageManager and engines.npm must both pin npm 10.9.2.");
   }
 
-  const nodeMajor = Number(process.versions.node.split(".")[0]);
   const npmResult = capture("npm", ["--version"]);
   report.toolchain = {
-    node: process.version,
+    node: process.versions.node,
     npm: npmResult.stdout || null,
+    expectedNode,
     expectedNpm,
   };
-  if (!record("node_22", nodeMajor === 22, { version: process.version })) {
-    throw new Error(`Node 22 is required, found ${process.version}.`);
+  if (!record("node_exact", process.versions.node === expectedNode, {
+    actual: process.versions.node,
+    expected: expectedNode,
+  })) {
+    throw new Error(`Node ${expectedNode} is required, found ${process.versions.node}.`);
   }
   if (!record("npm_exact", npmResult.status === 0 && npmResult.stdout === expectedNpm, {
     actual: npmResult.stdout || null,
