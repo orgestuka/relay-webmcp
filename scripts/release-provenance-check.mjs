@@ -11,7 +11,7 @@ function record(report, id, path, pass, detail) {
 }
 
 const report = {
-  schema: "relay.release-provenance-source-gate.v1",
+  schema: "relay.release-provenance-source-gate.v2",
   checkedAt: new Date().toISOString(),
   pass: false,
   checks: [],
@@ -29,7 +29,9 @@ try {
     smoke,
     globals,
     bootstrap,
+    releaseProvenance,
     releaseIdentity,
+    diagnostics,
   ] = await Promise.all([
     source(".env.deploy.example"),
     source("compose.yaml"),
@@ -40,7 +42,9 @@ try {
     source("scripts/deployment-smoke.mjs"),
     source("globals.d.ts"),
     source("apps/relay-command/src/bootstrap.ts"),
+    source("apps/relay-command/src/release-provenance.ts"),
     source("apps/relay-command/src/release-identity.ts"),
+    source("apps/relay-command/src/release-diagnostics.ts"),
   ]);
 
   record(
@@ -139,6 +143,27 @@ try {
 
   record(
     report,
+    "shared_release_sha_validator",
+    "apps/relay-command/src/release-provenance.ts",
+    releaseProvenance.includes("normalizeReleaseSha")
+      && releaseProvenance.includes("validReleaseSha")
+      && releaseProvenance.includes("assertCompiledReleaseSha")
+      && releaseProvenance.includes("non-zero 40-character Git commit"),
+    "Boot and diagnostic code must share one fail-closed definition of a valid release SHA.",
+  );
+
+  record(
+    report,
+    "production_boot_provenance_guard",
+    "apps/relay-command/src/bootstrap.ts",
+    bootstrap.includes("assertCompiledReleaseSha")
+      && bootstrap.includes("VITE_RELEASE_SHA")
+      && bootstrap.includes("localDevelopment: commandIsLocal"),
+    "A non-local Relay Command must reject a missing, placeholder or malformed compiled release SHA before registering tools.",
+  );
+
+  record(
+    report,
     "chatgpt_release_identity_tool",
     "apps/relay-command/src/release-identity.ts",
     bootstrap.includes('import("./release-identity")')
@@ -150,6 +175,18 @@ try {
       && releaseIdentity.includes("edgeSha === manifestSha")
       && releaseIdentity.includes('schema: "relay.release-identity.v1"'),
     "ChatGPT must be able to call one read-only tool that proves a successful manifest response, compiled application, trusted edge header and release manifest all identify the same commit.",
+  );
+
+  record(
+    report,
+    "diagnostic_requires_deployed_identity",
+    "apps/relay-command/src/release-diagnostics.ts",
+    diagnostics.includes("provenanceRequired")
+      && diagnostics.includes("readDiagnosticReleaseIdentity")
+      && diagnostics.includes("const provenancePass = semanticSuccess(releaseIdentity)")
+      && diagnostics.includes("const overallPass = provenancePass")
+      && diagnostics.includes("compiledReleaseSha"),
+    "The production ChatGPT diagnostic must fail unless the deployed release identity is internally consistent.",
   );
 } catch (error) {
   report.blockers.push(error instanceof Error ? error.message : "Release-provenance source gate failed.");
