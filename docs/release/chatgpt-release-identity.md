@@ -1,27 +1,25 @@
 # ChatGPT release identity gate
 
-This gate runs before any WebMCP scenario action. It proves that ChatGPT is testing the exact commit intended for submission rather than a stale command page, mixed provider deployment or cached edge response.
+This gate runs before any scenario action. It proves that ChatGPT is testing the exact reviewed commit rather than a stale page, mixed deployment or conflicting proxy response.
 
 ## Preconditions
 
-The deployed environment has already passed:
+The exact branch has already passed:
 
 ```bash
-npm run deploy:check
-npm run deploy:check:dns
-docker compose --env-file .env.deploy up -d
-npm run deploy:smoke
+npm run gate:source
+npm run gate:release -- --env .env.deploy
 ```
 
-The `.env.deploy` value below must equal `git rev-parse HEAD` for the clean checkout used to build the release:
+`.env.deploy` contains:
 
 ```env
-RELAY_RELEASE_SHA=<40-character commit SHA>
+RELAY_RELEASE_SHA=<exact output of git rev-parse HEAD>
 ```
 
 Open Relay in a fresh ChatGPT built-in browser context.
 
-## Exact ChatGPT instruction
+## Exact instruction
 
 ```text
 On the open Relay page, call relay_get_release_identity with an empty object.
@@ -37,6 +35,7 @@ Return the raw tool result JSON without summarizing it.
   "app": "relay-command",
   "origin": "https://<RELAY_HOST>",
   "compiledSha": "<RELAY_RELEASE_SHA>",
+  "edgeHeaderRaw": "<RELAY_RELEASE_SHA>",
   "edgeSha": "<RELAY_RELEASE_SHA>",
   "manifest": {
     "schema": "relay.release.v1",
@@ -47,6 +46,7 @@ Return the raw tool result JSON without summarizing it.
   "checks": {
     "responseOk": true,
     "compiledShaValid": true,
+    "edgeHeaderConsistent": true,
     "edgeShaValid": true,
     "manifestValid": true,
     "allLayersConsistent": true
@@ -56,48 +56,41 @@ Return the raw tool result JSON without summarizing it.
 }
 ```
 
-The following values must be identical:
+These values must identify the same commit:
 
 ```text
 Git checkout HEAD
 RELAY_RELEASE_SHA
 compiledSha
-X-Relay-Release / edgeSha
+one consistent X-Relay-Release value
 /release.json manifest.sha
 ```
 
-Save the raw result as:
+Repeated identical proxy headers may normalize to one value. Conflicting duplicate `X-Relay-Release` values fail with:
 
 ```text
-evidence/chatgpt/00-release-identity.json
+edgeHeaderConsistent: false
+manifestError: conflicting X-Relay-Release response headers
 ```
 
-Record alongside it:
+Store validation output under ignored runtime evidence:
 
-- test timestamp
-- ChatGPT desktop/browser build when visible
-- Relay URL
-- PR head SHA
-- whether a fresh browser context was used
+```text
+.relay-artifacts/chatgpt/01-release-identity.json
+```
+
+Record the test timestamp, ChatGPT build when visible, Relay URL, exact PR head SHA and fresh-context confirmation.
 
 ## Failure conditions
 
-Any of these fail the release gate:
+Any of these block the release:
 
 - tool is not visible to ChatGPT
 - HTTP response is not successful
-- missing or malformed `X-Relay-Release`
+- missing, malformed or conflicting `X-Relay-Release`
 - missing or malformed `/release.json`
 - manifest names another application
-- any SHA is a placeholder, malformed or different
-- response was produced by Chrome, Playwright or the proof harness rather than ChatGPT
-
-A mismatch usually means one of:
-
-- one origin was not rebuilt
-- Caddy still serves an older container
-- the browser reused a cached browsing context
-- `.env.deploy` contains a different SHA from the checkout
-- deployment happened from a dirty or different branch
+- any SHA is placeholder, malformed or different
+- result came from Chrome, Playwright or the proof harness instead of ChatGPT
 
 Do not continue to `relay_diagnose_webmcp` until this gate returns `ok: true`.
