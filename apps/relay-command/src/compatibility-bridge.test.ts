@@ -68,6 +68,7 @@ const windowTarget = new EventTarget() as EventTarget & {
   location: { origin: string; href: string };
 };
 windowTarget.location = { origin: commandOrigin, href: `${commandOrigin}/` };
+let planToolController: AbortController | null = null;
 
 function addRemote(origin: string, definition: ToolDefinition): void {
   registry.set(`${origin}|${definition.name}`, {
@@ -102,6 +103,10 @@ function commandTool(name: string): {
   const entry = registry.get(`${commandOrigin}|${name}`);
   if (!entry) throw new Error(`Missing Relay wrapper ${name}`);
   return entry;
+}
+
+function remoteInvocationCount(origin: string, name: string): number {
+  return invocations.filter((call) => call.origin === origin && call.name === name).length;
 }
 
 async function wait(milliseconds: number): Promise<void> {
@@ -144,7 +149,7 @@ const approvalToken = {
 };
 
 describe("strict ChatGPT provider capability bridge", () => {
-  it("routes fixed origin/tool pairs, records only accepted authority and mirrors teardown", async () => {
+  it("routes fixed pairs and exposes consequential wrappers only during exact approval", async () => {
     vi.stubEnv("VITE_SHELTER_ORIGIN", "https://shelter.test");
     vi.stubEnv("VITE_TRANSIT_ORIGIN", "https://transit.test");
     vi.stubEnv("VITE_SUPPLY_ORIGIN", "https://supply.test");
@@ -161,6 +166,18 @@ describe("strict ChatGPT provider capability bridge", () => {
     Object.defineProperty(globalThis, "navigator", {
       configurable: true,
       value: {},
+    });
+
+    let planStatus: string | null = "DRAFT";
+    const runtime = await import("@relay/webmcp-runtime");
+    planToolController = await runtime.registerTool({
+      name: "relay_get_plan",
+      description: "Return mutable plan state for bridge authorization tests.",
+      annotations: { readOnlyHint: true },
+      execute: () => JSON.stringify({
+        ok: true,
+        plan: planStatus ? { status: planStatus } : null,
+      }),
     });
 
     for (const provider of providers) {
@@ -228,8 +245,48 @@ describe("strict ChatGPT provider capability bridge", () => {
       }),
     });
     await wait(650);
+
+    // A provider-side commit tool is not enough. Relay must still be APPROVED.
+    expect(commandToolNames()).not.toContain("relay_bridge_shelter_commit_reservation");
+
+    planStatus = "APPROVED";
+    context.dispatchEvent(new Event("toolchange"));
+    await wait(650);
     expect(commandToolNames()).toContain("relay_bridge_shelter_commit_reservation");
 
+    const approvedCommit = commandTool("relay_bridge_shelter_commit_reservation");
+
+    // Invocation-time revalidation closes the interval/toolchange race. Even a
+    // stale reference captured while approved cannot execute after invalidation.
+    planStatus = "STALE";
+    const remoteCallsBeforeStaleAttempt = remoteInvocationCount(
+      "https://shelter.test",
+      "shelter_commit_reservation",
+    );
+    const staleAttempt = await context.executeTool(approvedCommit.tool, JSON.stringify({
+      proposalIds: ["p1"],
+      approvalToken,
+    }));
+    expect(JSON.parse(staleAttempt ?? "{}")).toMatchObject({
+      ok: false,
+      code: "HUMAN_APPROVAL_REQUIRED",
+      currentPlanStatus: "STALE",
+      requiredPlanStatus: "APPROVED",
+    });
+    expect(remoteInvocationCount(
+      "https://shelter.test",
+      "shelter_commit_reservation",
+    )).toBe(remoteCallsBeforeStaleAttempt);
+
+    context.dispatchEvent(new Event("toolchange"));
+    await wait(650);
+    expect(commandToolNames()).not.toContain("relay_bridge_shelter_commit_reservation");
+
+    // Fresh approval restores only the exact wrapper while the provider tool is
+    // still live. Provider rejection must not be recorded as approval evidence.
+    planStatus = "APPROVED";
+    context.dispatchEvent(new Event("toolchange"));
+    await wait(650);
     const commit = commandTool("relay_bridge_shelter_commit_reservation");
     const rejectedResult = await context.executeTool(commit.tool, JSON.stringify({
       proposalIds: ["p1"],
@@ -259,13 +316,20 @@ describe("strict ChatGPT provider capability bridge", () => {
     expect(JSON.parse(acceptedResult ?? "{}")).toMatchObject({ ok: true });
     expect(releaseState.readApprovalEvidence()).toHaveLength(1);
 
-    removeRemote("https://shelter.test", "shelter_commit_reservation");
+    planStatus = "COMMITTED";
+    context.dispatchEvent(new Event("toolchange"));
     await wait(650);
     expect(commandToolNames()).not.toContain("relay_bridge_shelter_commit_reservation");
-  }, 7_000);
+
+    // Remote teardown remains mirrored for non-consequential capabilities too.
+    removeRemote("https://shelter.test", "shelter_find_capacity");
+    await wait(650);
+    expect(commandToolNames()).not.toContain("relay_bridge_shelter_find_capacity");
+  }, 10_000);
 });
 
 afterAll(() => {
   windowTarget.dispatchEvent(new Event("pagehide"));
+  planToolController?.abort();
   vi.unstubAllEnvs();
 });
