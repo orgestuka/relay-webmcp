@@ -29,14 +29,27 @@ export function validateEvacuationPlan(
   states: ProviderStateSnapshot[],
   maximumCost: number,
 ): PolicyResult {
-  const northAvailability = states
-    .find((state) => state.providerId === "shelter")
+  const shelterState = states.find((state) => state.providerId === "shelter");
+  const northAvailability = shelterState
     ?.resources.find((resource) => resource.id === "north")?.available ?? 0;
 
   const totalCost = proposals.reduce((sum, proposal) => sum + proposal.totalCost, 0);
   const shelterBeds = quantity(proposals, "shelter");
-  const northBedsCommitted = quantity(proposals, "shelter", "north");
-  const northReserveAfterPlan = northAvailability - northBedsCommitted;
+
+  // A provider commit advances stateVersion and its live availability already
+  // reflects the committed reservation. Subtract only North proposals quoted
+  // against the current live version. Older-version proposals are either
+  // already reflected in live state or stale and must not be counted twice.
+  const northBedsPendingAtLiveVersion = shelterState
+    ? proposals
+      .filter((proposal) =>
+        proposal.providerId === "shelter"
+        && proposal.resourceId === "north"
+        && proposal.stateVersion === shelterState.stateVersion)
+      .reduce((sum, proposal) => sum + proposal.quantity, 0)
+    : 0;
+  const northReserveAfterPlan = northAvailability - northBedsPendingAtLiveVersion;
+
   const transitSeats = quantity(proposals, "transit");
   const accessibleSeats = quantity(proposals, "transit", "accessible-10");
   const evacuationKits = quantity(proposals, "supply", "evac-kit");
