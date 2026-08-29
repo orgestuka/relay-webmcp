@@ -36,6 +36,55 @@ function assetPaths(html) {
   return [...paths];
 }
 
+function hstsPass(value) {
+  const maxAge = String(value ?? "").match(/(?:^|;)\s*max-age=(\d+)/i)?.[1];
+  return maxAge ? Number(maxAge) >= 31_536_000 : false;
+}
+
+function baseCspPass(value) {
+  const policy = String(value ?? "");
+  return policy.includes("default-src 'self'")
+    && policy.includes("script-src 'self'")
+    && policy.includes("style-src 'self'")
+    && policy.includes("object-src 'none'")
+    && policy.includes("base-uri 'none'")
+    && policy.includes("form-action 'none'")
+    && !policy.includes("'unsafe-inline'")
+    && !policy.includes("'unsafe-eval'")
+    && !/(^|[;\s])\*([;\s]|$)/.test(policy);
+}
+
+function securityHeaderCheck(name, headers, expectedOrigins) {
+  const contentSecurityPolicy = headers.get("content-security-policy");
+  const permissionsPolicy = headers.get("permissions-policy");
+  const strictTransportSecurity = headers.get("strict-transport-security");
+  const relay = name === "relay";
+  const cspOriginPass = relay
+    ? expectedOrigins.every((origin) => contentSecurityPolicy?.includes(origin))
+      && contentSecurityPolicy?.includes("frame-src")
+    : expectedOrigins.length === 1
+      && contentSecurityPolicy?.includes(`frame-ancestors ${expectedOrigins[0]}`);
+  const toolsPolicyPass = Boolean(permissionsPolicy?.includes(relay ? "tools=(self " : "tools=(self)"))
+    && !permissionsPolicy?.includes("tools=(*)")
+    && (relay ? expectedOrigins.every((origin) => permissionsPolicy?.includes(origin)) : true);
+
+  return {
+    pass: baseCspPass(contentSecurityPolicy)
+      && Boolean(cspOriginPass)
+      && toolsPolicyPass
+      && hstsPass(strictTransportSecurity),
+    contentSecurityPolicy,
+    permissionsPolicy,
+    strictTransportSecurity,
+    checks: {
+      baseCsp: baseCspPass(contentSecurityPolicy),
+      originScope: Boolean(cspOriginPass),
+      toolsPolicy: toolsPolicyPass,
+      hsts: hstsPass(strictTransportSecurity),
+    },
+  };
+}
+
 async function probe(name, host, titleFragment, expectedOrigins) {
   const origin = `https://${host}`;
   const result = { name, origin, pass: false, checks: [], blocker: null };
@@ -58,6 +107,12 @@ async function probe(name, host, titleFragment, expectedOrigins) {
       value: originAgentCluster,
       consequence: "WebMCP registerTool/getTools reject non-origin-keyed documents with SecurityError.",
     });
+    const securityHeaders = securityHeaderCheck(name, page.headers, expectedOrigins);
+    result.checks.push({
+      id: "security_headers",
+      pass: securityHeaders.pass,
+      ...securityHeaders,
+    });
 
     const assets = [];
     for (const path of assetPaths(html)) {
@@ -79,7 +134,7 @@ async function probe(name, host, titleFragment, expectedOrigins) {
       });
     }
 
-    result.pass = result.checks.every((check) => check.pass);
+    result.pass = result.checks.every((entry) => entry.pass);
   } catch (error) {
     result.blocker = error instanceof Error ? error.message : "HTTPS probe failed";
   }
@@ -107,9 +162,9 @@ for (const [name, host, title, expectedOrigins] of targets) {
 }
 
 const report = {
-  schema: "relay.deployment-smoke.v2",
+  schema: "relay.deployment-smoke.v3",
   executedAt: new Date().toISOString(),
-  evidenceType: "deployed-four-origin-http-and-origin-isolation-smoke",
+  evidenceType: "deployed-four-origin-http-origin-isolation-and-security-header-smoke",
   pass: probes.every((probeResult) => probeResult.pass),
   probes,
   nextGate: "Open the Relay origin in a fresh ChatGPT built-in browser context and call relay_diagnose_webmcp with executeReadProbes=true.",
