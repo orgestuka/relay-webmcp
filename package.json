@@ -8,7 +8,10 @@
     "node": ">=22.0.0 <23",
     "npm": ">=10"
   },
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "concurrently -n relay,shelter,transit,supply \"npm run dev -w @relay/command\" \"npm run dev -w @relay/shelter-grid\" \"npm run dev -w @relay/transit-ops\" \"npm run dev -w @relay/supply-hub\"",
     "build": "npm run build -w @relay/command && npm run build -w @relay/shelter-grid && npm run build -w @relay/transit-ops && npm run build -w @relay/supply-hub",
@@ -17,11 +20,12 @@
     "audit:release": "node --experimental-strip-types scripts/release-audit.ts",
     "check:origin-isolation": "node scripts/origin-isolation-check.mjs",
     "check:security-headers": "node scripts/security-headers-check.mjs",
+    "check:release-provenance": "node scripts/release-provenance-check.mjs",
     "check:clean-release": "node scripts/clean-release-gate.mjs",
     "typecheck": "tsc -p tsconfig.check.json --noEmit",
-    "verify": "npm run check:origin-isolation && npm run check:security-headers && npm run typecheck && npm run smoke && npm run audit:release && npm test && npm run build",
-    "deploy:check": "npm run check:origin-isolation && npm run check:security-headers && node scripts/deploy-preflight.mjs .env.deploy",
-    "deploy:check:dns": "npm run check:origin-isolation && npm run check:security-headers && node scripts/deploy-preflight.mjs .env.deploy --dns",
+    "verify": "npm run check:origin-isolation && npm run check:security-headers && npm run check:release-provenance && npm run typecheck && npm run smoke && npm run audit:release && npm test && npm run build",
+    "deploy:check": "npm run check:origin-isolation && npm run check:security-headers && npm run check:release-provenance && node scripts/deploy-preflight.mjs .env.deploy",
+    "deploy:check:dns": "npm run check:origin-isolation && npm run check:security-headers && npm run check:release-provenance && node scripts/deploy-preflight.mjs .env.deploy --dns",
     "deploy:smoke": "node scripts/deployment-smoke.mjs .env.deploy"
   },
   "devDependencies": {
