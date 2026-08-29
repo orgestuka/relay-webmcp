@@ -13,6 +13,7 @@ async function readReleaseIdentity(): Promise<string> {
   let manifestError: string | null = null;
   let edgeSha: string | null = null;
   let responseStatus: number | null = null;
+  let responseOk = false;
 
   try {
     const response = await fetch("/release.json", {
@@ -20,11 +21,15 @@ async function readReleaseIdentity(): Promise<string> {
       cache: "no-store",
     });
     responseStatus = response.status;
+    responseOk = response.ok;
     edgeSha = response.headers.get("x-relay-release")?.trim().toLowerCase() ?? null;
     try {
       manifest = JSON.parse(await response.text()) as unknown;
     } catch (error) {
       manifestError = error instanceof Error ? error.message : "release manifest parse failed";
+    }
+    if (!response.ok && !manifestError) {
+      manifestError = `release manifest returned HTTP ${response.status}`;
     }
   } catch (error) {
     manifestError = error instanceof Error ? error.message : "release manifest request failed";
@@ -36,7 +41,8 @@ async function readReleaseIdentity(): Promise<string> {
   const manifestSha = typeof record?.sha === "string" ? record.sha.toLowerCase() : null;
   const compiledValid = validSha(compiledSha);
   const edgeValid = validSha(edgeSha);
-  const manifestValid = record?.schema === "relay.release.v1"
+  const manifestValid = responseOk
+    && record?.schema === "relay.release.v1"
     && record?.app === "relay-command"
     && validSha(manifestSha);
   const consistent = compiledValid
@@ -55,6 +61,7 @@ async function readReleaseIdentity(): Promise<string> {
     manifest,
     responseStatus,
     checks: {
+      responseOk,
       compiledShaValid: compiledValid,
       edgeShaValid: edgeValid,
       manifestValid,
