@@ -8,6 +8,7 @@ import {
   verifyApprovalToken,
 } from "../packages/pact/src/index.ts";
 import { validateEvacuationPlan } from "../packages/simulation/src/policy.ts";
+import { HumanAuthorityCeiling } from "../apps/relay-command/src/authority-guard.ts";
 import type {
   ApprovalPayload,
   ApprovalToken,
@@ -104,6 +105,13 @@ const policy = validateEvacuationPlan(proposals, states, 3000);
 assert(policy.ok && plan.totalCost === 2733, "normal plan failed");
 pass("normal_canonical_policy", "7/7 deterministic checks pass at EUR 2733");
 
+const authority = new HumanAuthorityCeiling(5000);
+assert(authority.capStageInput({ maxBudget: 5000 }).maxBudget === 5000, "initial incident authority was not preserved");
+assert(authority.confirmTightening(3000), "human tightening to EUR 3000 was rejected");
+assert(authority.capStageInput({ maxBudget: 5000 }).maxBudget === 3000, "stale restaging restored the old EUR 5000 authority");
+assert(!authority.confirmTightening(4000), "human authority was allowed to increase after tightening");
+pass("human_authority_persists_across_restaging", "EUR 5000 initial ceiling -> human EUR 3000 -> recovering agent request EUR 5000 remains capped at EUR 3000");
+
 const lowered = await tokenFor(2800);
 assert(validateApprovalEnvelope(lowered, signer.sessionId, startedAt + 2).ok, "lowered authority rejected");
 pass("lower_authority_valid", "EUR 2800 ceiling accepts exact EUR 2733 aggregate");
@@ -149,5 +157,5 @@ console.log(JSON.stringify({
   environment: { node: process.version },
   result: "pass",
   cases: results,
-  boundary: "Pure PACT and policy evidence. Browser state, provider mutation and ChatGPT compatibility require deployed end-to-end evidence.",
+  boundary: "Pure PACT, authority and policy evidence. Browser state, provider mutation and ChatGPT compatibility require deployed end-to-end evidence.",
 }, null, 2));
