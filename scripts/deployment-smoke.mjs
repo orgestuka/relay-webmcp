@@ -45,6 +45,10 @@ function validReleaseSha(value) {
   return /^[a-f0-9]{40}$/.test(String(value ?? "")) && !/^0+$/.test(String(value));
 }
 
+function noStore(value) {
+  return String(value ?? "").toLowerCase().split(",").some((part) => part.trim() === "no-store");
+}
+
 function baseCspPass(value) {
   const policy = String(value ?? "");
   return policy.includes("default-src 'self'")
@@ -89,11 +93,14 @@ function securityHeaderCheck(name, headers, expectedOrigins) {
   };
 }
 
-async function releaseManifestCheck(origin, app, expectedSha, headers) {
-  const headerSha = headers.get("x-relay-release")?.trim().toLowerCase() ?? null;
+async function releaseManifestCheck(origin, app, expectedSha, pageHeaders) {
+  const pageHeaderSha = pageHeaders.get("x-relay-release")?.trim().toLowerCase() ?? null;
   const response = await fetchWithTimeout(`${origin}/release.json`, {
     headers: { Accept: "application/json" },
   });
+  const manifestHeaderSha = response.headers.get("x-relay-release")?.trim().toLowerCase() ?? null;
+  const manifestOriginAgentCluster = response.headers.get("origin-agent-cluster")?.trim() ?? null;
+  const manifestCacheControl = response.headers.get("cache-control");
   let manifest = null;
   let parseError = null;
   try {
@@ -104,7 +111,10 @@ async function releaseManifestCheck(origin, app, expectedSha, headers) {
 
   const pass = response.ok
     && validReleaseSha(expectedSha)
-    && headerSha === expectedSha
+    && pageHeaderSha === expectedSha
+    && manifestHeaderSha === expectedSha
+    && manifestOriginAgentCluster === "?1"
+    && noStore(manifestCacheControl)
     && manifest?.schema === "relay.release.v1"
     && manifest?.app === app
     && manifest?.sha === expectedSha;
@@ -113,7 +123,10 @@ async function releaseManifestCheck(origin, app, expectedSha, headers) {
     pass,
     status: response.status,
     expectedSha,
-    headerSha,
+    pageHeaderSha,
+    manifestHeaderSha,
+    manifestOriginAgentCluster,
+    manifestCacheControl,
     manifest,
     parseError,
   };
@@ -125,7 +138,17 @@ async function probe(name, app, host, titleFragment, expectedOrigins, expectedRe
   try {
     const health = await fetchWithTimeout(`${origin}/healthz`, { headers: { Accept: "text/plain" } });
     const healthText = await health.text();
-    result.checks.push({ id: "healthz", pass: health.ok && healthText.trim() === "ok", status: health.status, body: healthText.trim() });
+    result.checks.push({
+      id: "healthz",
+      pass: health.ok
+        && healthText.trim() === "ok"
+        && health.headers.get("origin-agent-cluster")?.trim() === "?1"
+        && noStore(health.headers.get("cache-control")),
+      status: health.status,
+      body: healthText.trim(),
+      originAgentCluster: health.headers.get("origin-agent-cluster"),
+      cacheControl: health.headers.get("cache-control"),
+    });
 
     const page = await fetchWithTimeout(origin, { headers: { Accept: "text/html" } });
     const html = await page.text();
@@ -133,7 +156,9 @@ async function probe(name, app, host, titleFragment, expectedOrigins, expectedRe
     result.checks.push({ id: "https_page", pass: page.ok && page.url.startsWith("https://"), status: page.status, finalUrl: page.url });
     result.checks.push({ id: "title", pass: html.toLowerCase().includes(titleFragment.toLowerCase()), expectedFragment: titleFragment });
     result.checks.push({ id: "app_mount", pass: html.includes('id="app"') || html.includes("id='app'") });
+    result.checks.push({ id: "html_no_store", pass: noStore(page.headers.get("cache-control")), value: page.headers.get("cache-control") });
     result.checks.push({ id: "nosniff_header", pass: page.headers.get("x-content-type-options") === "nosniff", value: page.headers.get("x-content-type-options") });
+    result.checks.push({ id: "referrer_policy", pass: page.headers.get("referrer-policy") === "no-referrer", value: page.headers.get("referrer-policy") });
     result.checks.push({
       id: "origin_agent_cluster_header",
       pass: originAgentCluster?.trim() === "?1",
@@ -159,7 +184,15 @@ async function probe(name, app, host, titleFragment, expectedOrigins, expectedRe
       const response = await fetchWithTimeout(`${origin}${path}`);
       const body = await response.text();
       assets.push({ path, status: response.status, body });
-      result.checks.push({ id: `asset_${path}`, pass: response.ok, status: response.status });
+      result.checks.push({
+        id: `asset_${path}`,
+        pass: response.ok
+          && response.headers.get("origin-agent-cluster")?.trim() === "?1"
+          && String(response.headers.get("cache-control") ?? "").includes("immutable"),
+        status: response.status,
+        originAgentCluster: response.headers.get("origin-agent-cluster"),
+        cacheControl: response.headers.get("cache-control"),
+      });
     }
     const compiledText = assets.map((asset) => asset.body).join("\n");
     result.checks.push({
@@ -203,14 +236,14 @@ for (const [name, app, host, title, expectedOrigins] of targets) {
 }
 
 const report = {
-  schema: "relay.deployment-smoke.v4",
+  schema: "relay.deployment-smoke.v5",
   executedAt: new Date().toISOString(),
   evidenceType: "deployed-four-origin-security-and-release-provenance-smoke",
   releaseSha,
   releaseShaValid: validReleaseSha(releaseSha),
   pass: validReleaseSha(releaseSha) && probes.every((probeResult) => probeResult.pass),
   probes,
-  nextGate: "Open the Relay origin in a fresh ChatGPT built-in browser context and call relay_diagnose_webmcp with executeReadProbes=true.",
+  nextGate: "Open the Relay origin in a fresh ChatGPT built-in browser context, call relay_get_release_identity, then relay_diagnose_webmcp with executeReadProbes=true.",
 };
 
 console.log(JSON.stringify(report, null, 2));
