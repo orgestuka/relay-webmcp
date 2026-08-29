@@ -38,12 +38,14 @@ Hard constraints:
 - preserve at least 20 unallocated beds at North Shelter
 - provide 42 evacuation kits
 - provide 9 mobility medical kits
-- keep total authority at or below €3,000
+- keep total cost at or below the incident budget of €5,000
 - create non-binding proposals first
 - do not commit anything before I approve the exact Relay plan
 
-Use the provider tools, stage the returned proposal IDs with relay_stage_plan, then call relay_request_approval and stop for my decision.
+Use the provider tools and stage the returned proposal IDs with relay_stage_plan using maxBudget 5000. Do not tighten the authority ceiling yourself. Then call relay_request_approval and stop for my decision.
 ```
+
+The initial staged authority must visibly be **€5,000**. If ChatGPT stages the plan with a lower ceiling, reset and rerun the prompt. The human, not the agent, performs the narrowing step.
 
 ## 0:00–0:12 — Hook
 
@@ -99,7 +101,8 @@ relay_stage_plan
 - provider proposal counters rise
 - exact provider origins and versions appear in Relay
 - seven deterministic checks pass
-- total is €2,733
+- total cost is €2,733
+- staged authority is €5,000
 - `relay_request_approval` appears
 - provider commit wrappers are visible but require signed authority
 
@@ -109,10 +112,10 @@ relay_stage_plan
 
 ## 0:54–1:05 — Human narrows authority
 
-Set the authority ceiling to exactly:
+Change the authority ceiling from:
 
 ```text
-€3,000
+€5,000 → €3,000
 ```
 
 **Narration**
@@ -173,7 +176,7 @@ Do not cut this moment too quickly.
 Ask ChatGPT:
 
 ```text
-Recover the stale Relay plan. Re-query and replace only the invalid Shelter Grid proposals. Reuse Transit Ops and Supply Hub proposals only if their provider state versions remain current. Restage, then request exact approval again.
+Recover the stale Relay plan. Re-query and replace only the invalid Shelter Grid proposals. Reuse Transit Ops and Supply Hub proposals only if their provider state versions remain current. Restage with the human-amended €3,000 ceiling, then request exact approval again.
 ```
 
 Expected new shelter work:
@@ -200,7 +203,7 @@ North Shelter retains 34 beds.
 
 The approval sheet reopens.
 
-Show the changed Shelter Grid version and recovered operations.
+Show the changed Shelter Grid version, recovered operations and retained €3,000 authority ceiling.
 
 Click:
 
@@ -267,13 +270,14 @@ The final cut must visibly contain:
 - four distinct HTTPS origins
 - three independent provider websites
 - six initial non-binding proposals
-- €2,733 initial plan
-- €3,000 human authority ceiling
+- €2,733 initial plan cost
+- €5,000 initial authority ceiling
+- human amendment from €5,000 to €3,000
 - suspended approval call
 - Shelter Grid v1 → v2
 - stale plan state
 - capability disappearance
-- recovered €2,793 plan
+- recovered €2,793 plan under the retained €3,000 ceiling
 - exact approval sheet
 - three independent provider commit calls
 - six receipts
@@ -303,6 +307,8 @@ Forbidden:
 
 Before recording the final video:
 
+- [ ] initial plan stages with a visible €5,000 authority ceiling
+- [ ] human visibly changes €5,000 to €3,000
 - [ ] successful path completed three consecutive times
 - [ ] stale/recovery path completed three consecutive times
 - [ ] reset returns all providers to v1 and zero proposals/receipts
