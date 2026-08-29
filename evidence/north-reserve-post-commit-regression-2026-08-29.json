@@ -1,0 +1,22 @@
+{
+  "schema": "relay.north-reserve-post-commit-regression.v1",
+  "sourceBlobs": {
+    "packages/simulation/src/policy.ts": "a9d73b34b4f45403000707b2387893c480c2b155",
+    "packages/simulation/src/policy.test.ts": "62e3b95efc6109a990eeb157307976bf0daf67ca"
+  },
+  "executedAt": "2026-08-29T09:55:30Z",
+  "environment": {
+    "node": "v22.16.0",
+    "mode": "dependency-free TypeScript regression reproduction"
+  },
+  "command": "node --experimental-strip-types /tmp/relay-policy-regression/policy.ts",
+  "result": "pass",
+  "checks": {
+    "recoveredPlanTotal": 2793,
+    "northReserveBeforeShelterCommit": 34,
+    "northReserveAfterShelterCommit": 34,
+    "committedReservationNotSubtractedTwice": true
+  },
+  "bugPrevented": "After a Shelter Grid commit advances the provider version and live North availability already falls from 46 to 34, policy evaluation no longer subtracts the 12-bed proposal a second time and incorrectly reports 22.",
+  "boundary": "This proves the pure policy regression. The final deployed UI and relay_get_plan output still require browser evidence."
+}
