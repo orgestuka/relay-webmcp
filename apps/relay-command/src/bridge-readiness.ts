@@ -24,7 +24,11 @@ export async function waitForInitialBridgeSurface(options: {
   registeredTools: string[];
   missingTools: string[];
 }> {
-  const timeoutMs = Math.max(0, options.timeoutMs ?? 1_500);
+  // A cold four-origin HTTPS load can spend meaningful time in DNS, TLS and
+  // iframe startup before provider tools enter the shared ModelContext. Keep
+  // the wait bounded, but do not make the first ChatGPT diagnostic race a
+  // normal cold start.
+  const timeoutMs = Math.max(0, options.timeoutMs ?? 5_000);
   const intervalMs = Math.max(10, options.intervalMs ?? 50);
   const startedAt = Date.now();
 
