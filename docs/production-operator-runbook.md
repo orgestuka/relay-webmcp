@@ -1,23 +1,25 @@
 # Relay production operator runbook
 
-This runbook is intentionally narrow. It exists to take one reviewed Relay commit from a clean checkout to four evidenced HTTPS origins without changing product behavior.
+This runbook takes one reviewed commit from a clean checkout to four evidenced HTTPS origins. It must not change product behavior.
 
 ## Release invariants
 
 A release is invalid unless all conditions hold:
 
 - branch is `build/pact-vertical-slice`
-- worktree is clean
+- worktree is clean before and after verification
 - Node.js major version is 22
-- `RELAY_BUILD_SHA` equals `git rev-parse HEAD`
+- npm is exactly `10.9.2`
+- a committed `package-lock.json` with `lockfileVersion >= 3` exists
+- `RELAY_RELEASE_SHA` equals `git rev-parse HEAD`
 - Relay Command and all three providers use distinct hostnames
 - all four hostnames resolve to the deployment server
 - all four documents serve `Origin-Agent-Cluster: ?1`
 - Relay Command delegates the WebMCP `tools` feature only to itself and the three exact providers
-- providers allow the feature for themselves
-- every production bundle contains the exact release SHA
+- providers allow the feature only for themselves and expose tools only to Relay
+- every production bundle, edge header and `/release.json` manifest identifies the same commit
 - no production bundle contains localhost origins
-- actual ChatGPT evidence is captured separately from harness evidence
+- actual ChatGPT evidence remains separate from harness evidence
 
 ## 1. Prepare DNS
 
@@ -30,49 +32,35 @@ transit.<domain>   A/AAAA → server
 supply.<domain>    A/AAAA → server
 ```
 
-Ports 80 and 443 must reach Caddy. Port 443/UDP is optional for HTTP/3 but is already exposed by Compose.
+Ports 80 and 443 must reach Caddy. Port 443/UDP is optional for HTTP/3 but is exposed by Compose.
 
-Do not proxy the origins through a service that strips or rewrites:
+Do not place the origins behind a proxy that strips or rewrites:
 
 ```http
 Origin-Agent-Cluster
 Permissions-Policy
+Content-Security-Policy
+X-Relay-Release
 Cache-Control
 ```
 
-## 2. Prepare the exact checkout
+## 2. Start from a source-gate pass
+
+Follow [`codex-local-release.md`](codex-local-release.md) first.
+
+Then confirm:
 
 ```bash
 git checkout build/pact-vertical-slice
-git pull --ff-only
-
+git pull --ff-only origin build/pact-vertical-slice
 git status --short
 git rev-parse HEAD
 node --version
 npm --version
+npm run gate:source
 ```
 
-Required:
-
-```text
-clean worktree
-Node v22.x
-```
-
-Install and verify:
-
-```bash
-npm install --no-audit --no-fund
-npm run gate:source -- --output evidence/source-gate.json
-```
-
-The source gate fails closed on:
-
-- wrong branch
-- detached or malformed Git head
-- dirty worktree
-- wrong Node major
-- any typecheck, protocol test, policy test, adversarial test or production build failure
+Do not deploy unless the source gate returns `"pass": true`.
 
 ## 3. Configure deployment
 
@@ -80,7 +68,7 @@ The source gate fails closed on:
 cp .env.deploy.example .env.deploy
 ```
 
-Populate:
+Populate the ignored file:
 
 ```env
 RELAY_HOST=relay.<domain>
@@ -88,33 +76,51 @@ SHELTER_HOST=shelter.<domain>
 TRANSIT_HOST=transit.<domain>
 SUPPLY_HOST=supply.<domain>
 ACME_EMAIL=<operational email>
-RELAY_BUILD_SHA=<exact output of git rev-parse HEAD>
 RELAY_IMAGE_TAG=submission
+RELAY_RELEASE_SHA=<exact output of git rev-parse HEAD>
 ```
 
-`.env.deploy` is ignored by Git and must never be committed.
+Verify the SHA before continuing:
+
+```bash
+EXPECTED_SHA="$(git rev-parse HEAD)"
+grep '^RELAY_RELEASE_SHA=' .env.deploy
+test "$(sed -n 's/^RELAY_RELEASE_SHA=//p' .env.deploy)" = "$EXPECTED_SHA"
+```
 
 ## 4. Execute the full release gate
 
+Docker Desktop or a reachable Docker Engine with Compose v2 must be running.
+
 ```bash
-npm run gate:release -- \
-  --env .env.deploy \
-  --output evidence/deployment/release-gate.json
+npm run gate:release -- --env .env.deploy
 ```
 
-The full gate runs, in order:
+The full gate performs, in order:
 
-1. clean source verification
-2. hostname, DNS, source-SHA and deployment-source preflight
-3. Docker Compose rendering
-4. Caddy syntax validation
-5. Nginx syntax validation
-6. production image build
-7. four-origin startup
-8. deployed HTTPS and WebMCP header smoke
-9. final Compose status
+1. branch, clean-tree and exact-head checks
+2. Node 22 and npm 10.9.2 checks
+3. committed lockfile validation
+4. release-script syntax and static release-contract audit
+5. fresh `npm ci`
+6. complete repository verification and four production builds
+7. hostname, DNS, release-SHA and clean-checkout preflight
+8. Docker and Compose availability checks
+9. Compose rendering
+10. Caddy syntax validation with the exact release SHA
+11. Nginx syntax validation
+12. production image build
+13. four-origin startup
+14. deployed HTTPS, security-header, embedded-origin and release-provenance smoke
+15. final Compose status and clean-tree check
 
-The gate stops at the first failure and records the exact failed command.
+Machine-readable output is written under:
+
+```text
+.relay-artifacts/release/full-deploy-release-gate-<commit>.json
+```
+
+The gate stops at the first failure and records the failed command.
 
 ## 5. Inspect deployed services
 
@@ -124,9 +130,17 @@ docker compose --env-file .env.deploy logs --tail=100 caddy
 docker compose --env-file .env.deploy logs --tail=50 relay-command shelter-grid transit-ops supply-hub
 ```
 
-All services must be healthy. Caddy must show successful certificate issuance or reuse.
+All application services must be healthy. Caddy must show successful certificate issuance or reuse.
 
-Manual header check:
+Load the environment for manual checks:
+
+```bash
+set -a
+. ./.env.deploy
+set +a
+```
+
+Then inspect every edge:
 
 ```bash
 for host in \
@@ -136,25 +150,28 @@ for host in \
   "$SUPPLY_HOST"
 do
   echo "=== $host ==="
-  curl -sSIL "https://$host" | sed -n '1,25p'
+  curl -sSIL "https://$host" | sed -n '1,30p'
+  curl -sS "https://$host/release.json"
+  echo
 done
 ```
 
+Every root and release manifest response must identify `$RELAY_RELEASE_SHA` through `X-Relay-Release` and `release.json`.
+
 ## 6. Capture actual ChatGPT evidence
 
-Open Relay in a fresh ChatGPT built-in browser context. Do not reuse a context that loaded a Relay origin before origin isolation was configured.
+Open the Relay origin in a fresh ChatGPT built-in browser context. Do not reuse a context that loaded a Relay origin before origin isolation was configured.
 
-Follow:
+Follow [`chatgpt-validation.md`](chatgpt-validation.md).
 
-- [`chatgpt-validation.md`](chatgpt-validation.md)
-
-Capture raw results under:
+The first calls must be:
 
 ```text
-evidence/chatgpt/
+relay_get_release_identity
+relay_diagnose_webmcp { executeReadProbes: true }
 ```
 
-The first diagnostic must contain the same SHA as:
+Both must identify the same SHA as:
 
 ```bash
 git rev-parse HEAD
@@ -162,41 +179,38 @@ git rev-parse HEAD
 
 ## 7. Rehearse and record
 
-Follow:
+Follow [`demo-script.md`](demo-script.md).
 
-- [`demo-script.md`](demo-script.md)
-
-Minimum rehearsal standard:
+Minimum standard:
 
 ```text
-canonical path             3 consecutive passes
+canonical path              3 consecutive passes
 stale/recovery path         3 consecutive passes
 partial-commit drill        1 pass
 scenario reset              verified between every run
 final runtime               2:40–2:50
 ```
 
-## 8. Freeze release evidence
+## 8. Evidence immutability rule
 
-Before merge, record:
+Generated release evidence defaults to ignored `.relay-artifacts/` so it cannot silently change the commit being proved.
 
-```bash
-git rev-parse HEAD
-docker compose --env-file .env.deploy images
-docker compose --env-file .env.deploy ps
-npm run deploy:smoke > evidence/deployment/final-smoke.json
-```
+Do not commit runtime evidence after deploying a SHA. Doing so creates a new commit and invalidates the release identity. Either:
 
-Insert the final URLs and video URL into the README and Devpost draft.
+- keep final machine evidence outside Git and upload it to the submission, or
+- commit the evidence, set `RELAY_RELEASE_SHA` to the new commit and rerun the entire source and deployment gate.
+
+Never relabel an old image with a new SHA.
 
 ## 9. Merge and tag
 
-Only after every release gate is green:
+Only after every source, deployment, ChatGPT and rehearsal gate is green:
 
-1. make the repository public or transfer it when required
+1. satisfy the repository visibility requirement
 2. mark PR #1 ready for review
 3. merge PR #1 without rewriting the validated history
-4. create the submission tag from the merged release commit
+4. build and deploy the merged commit if the merge commit changes the SHA
+5. create the submission tag from the exact merged and validated commit
 
 Suggested tag:
 
@@ -211,28 +225,28 @@ git push origin webmcp-submission-v1
 
 ### Source gate failure
 
-Do not deploy. Fix the exact failing check on the build branch and rerun from a clean worktree.
+Do not deploy. Preserve the first failing command and its complete output. Fix only that boundary, return to a clean tree and rerun `npm run gate:source`.
 
 ### Caddy or Nginx validation failure
 
-Do not start the stack. Correct the configuration and rerun the full gate.
+Do not start the stack. Correct the exact configuration defect and rerun the full gate.
 
 ### Deployed smoke failure
 
-Preserve the raw report. Check DNS, certificate state, response headers and embedded origins. Do not begin ChatGPT validation.
+Preserve the raw gate report. Check DNS, certificate state, response headers, embedded origins and release identity. Do not begin ChatGPT validation.
 
 ### ChatGPT diagnostic failure
 
 Preserve the raw JSON. Compare:
 
-- deployed source SHA
+- compiled, edge and manifest SHA
 - origin-agent-cluster state
 - runtime-registered tools
 - ChatGPT-visible tools
 - provider discovery errors
 - semantic execution probes
 
-Fix the narrow failed boundary. Do not compensate with UI automation or relabel harness output as ChatGPT evidence.
+Do not compensate with UI automation or relabel harness output as ChatGPT evidence.
 
 ### Partial cross-provider commit
 
@@ -240,18 +254,11 @@ Do not claim global success. Preserve receipts, inspect live provider versions a
 
 ## Rollback
 
-Relay state is deterministic and in-memory for the competition scenario. Rollback is code-level:
-
-1. stop the stack
-2. checkout the last validated commit
-3. set `RELAY_BUILD_SHA` to that exact commit
-4. rerun `npm run gate:release`
+Rollback is commit-bound:
 
 ```bash
 docker compose --env-file .env.deploy down
 git checkout <validated-commit>
-# update RELAY_BUILD_SHA in .env.deploy
-npm run gate:release -- --env .env.deploy --output evidence/deployment/rollback-gate.json
+# Set RELAY_RELEASE_SHA in .env.deploy to that exact commit.
+npm run gate:release -- --env .env.deploy
 ```
-
-Never relabel an old image with a new SHA.
