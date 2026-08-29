@@ -22,11 +22,12 @@
     "check:security-headers": "node scripts/security-headers-check.mjs",
     "check:release-provenance": "node scripts/release-provenance-check.mjs",
     "check:audit-closure": "node scripts/audit-closure-check.mjs",
+    "check:bridge-authority": "node scripts/bridge-authority-check.mjs",
     "check:clean-release": "node scripts/clean-release-gate.mjs",
     "typecheck": "tsc -p tsconfig.check.json --noEmit",
-    "verify": "npm run check:origin-isolation && npm run check:security-headers && npm run check:release-provenance && npm run check:audit-closure && npm run typecheck && npm run smoke && npm run audit:release && npm test && npm run build",
-    "deploy:check": "npm run check:origin-isolation && npm run check:security-headers && npm run check:release-provenance && npm run check:audit-closure && node scripts/deploy-preflight.mjs .env.deploy",
-    "deploy:check:dns": "npm run check:origin-isolation && npm run check:security-headers && npm run check:release-provenance && npm run check:audit-closure && node scripts/deploy-preflight.mjs .env.deploy --dns",
+    "verify": "npm run check:origin-isolation && npm run check:security-headers && npm run check:release-provenance && npm run check:audit-closure && npm run check:bridge-authority && npm run typecheck && npm run smoke && npm run audit:release && npm test && npm run build",
+    "deploy:check": "npm run check:origin-isolation && npm run check:security-headers && npm run check:release-provenance && npm run check:audit-closure && npm run check:bridge-authority && node scripts/deploy-preflight.mjs .env.deploy",
+    "deploy:check:dns": "npm run check:origin-isolation && npm run check:security-headers && npm run check:release-provenance && npm run check:audit-closure && npm run check:bridge-authority && node scripts/deploy-preflight.mjs .env.deploy --dns",
     "deploy:smoke": "node scripts/deployment-smoke.mjs .env.deploy"
   },
   "devDependencies": {
