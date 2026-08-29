@@ -25,27 +25,43 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
+          cache: npm
 
-      - name: Install exact direct dependencies and workspace links
-        run: npm install --no-audit --no-fund
+      - name: Pin npm 10.9.2
+        run: |
+          npm install --global npm@10.9.2 --no-audit --no-fund
+          test "$(npm --version)" = "10.9.2"
+
+      - name: Install exact locked dependency graph
+        run: npm ci --no-audit --no-fund
 
       - name: Full repository verification
         run: npm run verify
 
+      - name: Capture exact CI release identity
+        id: release
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Deployment manifest preflight
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
-          cat > /tmp/relay-ci.env <<'EOF'
+          cat > .env.deploy <<EOF
           RELAY_HOST=relay.ci.test
           SHELTER_HOST=shelter.ci.test
           TRANSIT_HOST=transit.ci.test
           SUPPLY_HOST=supply.ci.test
           ACME_EMAIL=ci@relay.test
           RELAY_IMAGE_TAG=ci
+          RELAY_RELEASE_SHA=${RELEASE_SHA}
           EOF
-          node scripts/deploy-preflight.mjs /tmp/relay-ci.env
-          docker compose --env-file /tmp/relay-ci.env config --quiet
+          node scripts/deploy-preflight.mjs .env.deploy
+          docker compose --env-file .env.deploy config --quiet
+          rm .env.deploy
 
       - name: Production container build
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
           docker build \
             --file deploy/Dockerfile \
@@ -54,10 +70,13 @@ jobs:
             --build-arg VITE_TRANSIT_ORIGIN=https://transit.ci.test \
             --build-arg VITE_SUPPLY_ORIGIN=https://supply.ci.test \
             --build-arg VITE_ENABLE_PROOF_RUNNER=0 \
+            --build-arg VITE_RELEASE_SHA="${RELEASE_SHA}" \
             --tag relay-webmcp:ci \
             .
 
       - name: Smoke every static application image
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
           set -euo pipefail
           port=18080
@@ -67,13 +86,21 @@ jobs:
               --env RELAY_APP="$app" \
               --publish "127.0.0.1:${port}:80" \
               relay-webmcp:ci
+            ready=0
             for attempt in $(seq 1 30); do
               if curl --fail --silent "http://127.0.0.1:${port}/healthz" | grep -qx ok; then
+                ready=1
                 break
               fi
               sleep 1
             done
+            test "$ready" = "1"
             curl --fail --silent "http://127.0.0.1:${port}/" | grep -q 'id="app"'
+            manifest="$(curl --fail --silent "http://127.0.0.1:${port}/release.json")"
+            node -e '
+              const manifest = JSON.parse(process.argv[1]);
+              if (manifest.schema !== "relay.release.v1" || manifest.app !== process.argv[2] || manifest.sha !== process.argv[3]) process.exit(1);
+            ' "$manifest" "$app" "$RELEASE_SHA"
             docker stop "$name"
             port=$((port + 1))
           done
