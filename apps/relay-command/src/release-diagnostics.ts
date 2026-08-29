@@ -33,6 +33,12 @@ interface ToolchangeEvidence {
   discoveryErrors: ToolCollection["errors"];
 }
 
+interface ExecutionProbe {
+  ok: boolean;
+  result?: unknown;
+  error?: string;
+}
+
 const commandOrigin = window.location.origin;
 const providerSpecs: ProviderDiagnosticSpec[] = [
   {
@@ -165,7 +171,8 @@ function scheduleCapture(reason: ToolchangeEvidence["reason"]): void {
   }, 25);
 }
 
-function parseToolOutput(raw: unknown): { ok: boolean; value?: unknown; error?: string } {
+function parseToolOutput(raw: unknown): { ok: true; value: unknown } | { ok: false; error: string } {
+  if (raw === null || raw === undefined) return { ok: false, error: "Tool returned no result." };
   if (typeof raw !== "string") return { ok: true, value: raw };
   try {
     return { ok: true, value: JSON.parse(raw) as unknown };
@@ -177,12 +184,16 @@ function parseToolOutput(raw: unknown): { ok: boolean; value?: unknown; error?: 
   }
 }
 
+function semanticSuccess(value: unknown): boolean {
+  return isRecord(value) && value.ok === true;
+}
+
 async function executeExactTool(
   tools: RegisteredTool[],
   origin: string,
   name: string,
   input: Record<string, unknown>,
-): Promise<{ ok: boolean; result?: unknown; error?: string }> {
+): Promise<ExecutionProbe> {
   const context = getModelContext();
   if (!context?.executeTool) return { ok: false, error: "document.modelContext.executeTool is unavailable" };
   const tool = tools.find((candidate) => normalizeToolOrigin(candidate) === origin && candidate.name === name);
@@ -190,7 +201,15 @@ async function executeExactTool(
 
   try {
     const parsed = parseToolOutput(await context.executeTool(tool, JSON.stringify(input)));
-    return parsed.ok ? { ok: true, result: parsed.value } : { ok: false, error: parsed.error };
+    if (!parsed.ok) return parsed;
+    if (!semanticSuccess(parsed.value)) {
+      return {
+        ok: false,
+        result: parsed.value,
+        error: "Provider tool executed but returned a semantic failure result.",
+      };
+    }
+    return { ok: true, result: parsed.value };
   } catch (error) {
     return { ok: false, error: errorMessage(error) };
   }
@@ -246,7 +265,7 @@ async function registerReleaseTools(): Promise<void> {
   await registerTool({
     name: "relay_diagnose_webmcp",
     title: "Diagnose Relay WebMCP compatibility",
-    description: "Return machine-readable evidence for Relay registration, provider-origin discovery, safe provider execution probes and observed dynamic toolchange events. This tool never creates proposals or commits capacity.",
+    description: "Return machine-readable evidence for Relay registration, provider-origin discovery, successful read-only provider execution and observed dynamic toolchange events. This tool never creates proposals or commits capacity.",
     inputSchema: {
       type: "object",
       properties: {
