@@ -23,6 +23,10 @@ export interface RegisteredTool {
   annotations?: ToolAnnotations;
 }
 
+export type ToolInputGuard = (
+  input: Record<string, unknown>,
+) => Promise<Record<string, unknown>> | Record<string, unknown>;
+
 interface ModelContextLike extends EventTarget {
   registerTool(tool: ToolDefinition, options?: { signal?: AbortSignal; exposedTo?: string[] }): Promise<void>;
   getTools?(options?: { fromOrigins?: string[] }): Promise<RegisteredTool[]>;
@@ -44,6 +48,7 @@ declare global {
 }
 
 const localRegistrations = new Map<string, LocalRegistration>();
+const inputGuards = new Map<string, ToolInputGuard>();
 
 export function getModelContext(): ModelContextLike | null {
   return document.modelContext ?? navigator.modelContext ?? null;
@@ -51,6 +56,18 @@ export function getModelContext(): ModelContextLike | null {
 
 export function webMcpAvailable(): boolean {
   return Boolean(getModelContext()?.registerTool);
+}
+
+export function installToolInputGuard(name: string, guard: ToolInputGuard): () => void {
+  if (!name.trim()) throw new TypeError("Tool input guard requires a tool name.");
+  if (localRegistrations.has(name)) {
+    throw new Error(`Tool input guard for ${name} must be installed before tool registration.`);
+  }
+
+  inputGuards.set(name, guard);
+  return () => {
+    if (inputGuards.get(name) === guard) inputGuards.delete(name);
+  };
 }
 
 export function getLocalRegisteredToolNames(): string[] {
@@ -72,6 +89,19 @@ export async function executeLocalRegisteredTool<TInput extends object = Record<
   return registration.definition.execute(input as Record<string, unknown>, options);
 }
 
+function guardedDefinition<TInput extends object>(tool: ToolDefinition<TInput>): ToolDefinition {
+  const guard = inputGuards.get(tool.name);
+  if (!guard) return tool as ToolDefinition;
+
+  return {
+    ...tool,
+    execute: async (input: Record<string, unknown>, options?: ToolExecutionOptions) => {
+      const guardedInput = await guard(structuredClone(input));
+      return tool.execute(guardedInput as TInput, options);
+    },
+  };
+}
+
 function deferredAbort(controller: AbortController | null): void {
   if (!controller || controller.signal.aborted) return;
   globalThis.setTimeout(() => controller.abort(), 0);
@@ -87,15 +117,16 @@ export async function registerTool<TInput extends object>(
     return null;
   }
 
+  const definition = guardedDefinition(tool);
   const controller = new AbortController();
   try {
-    await context.registerTool(tool as ToolDefinition, {
+    await context.registerTool(definition, {
       signal: controller.signal,
       exposedTo: options.exposedTo,
     });
 
     const registration: LocalRegistration = {
-      definition: tool as ToolDefinition,
+      definition,
       controller,
     };
     localRegistrations.set(tool.name, registration);
