@@ -10,9 +10,25 @@ Evidence is separated by execution environment. Never upgrade one evidence class
 
 The core smoke and hostile authorization audit prove pure PACT, policy and dynamic-capability properties against source reconstructed from the connected private branch.
 
-The release-module evidence at source commit `5c389a19c261a9caf636e2797753c06b748f0bfb` proves strict TypeScript compatibility and local registration-ledger behavior for the current WebMCP runtime and release diagnostics.
+The release-module evidence proves strict TypeScript compatibility and local registration-ledger behavior for the current WebMCP runtime and release diagnostics.
 
-These files do **not** prove:
+## Deterministic harness evidence
+
+- `release-diagnostics-semantic-probe-2026-08-29.json`
+- `compatibility-bridge-smoke-2026-08-29.json`
+
+The diagnostic semantic probe proves that a provider tool counts as executable only when it returns a real semantic `{ "ok": true }` result. Listed tools that throw, return null, return malformed JSON or return `{ "ok": false }` fail closed.
+
+The compatibility bridge smoke proves:
+
+- fixed provider-origin and tool-name routing
+- wrong-origin name collisions are ignored
+- no generic execute-any capability exists
+- rejected provider commits do not record approval evidence
+- provider-accepted commits record the signed PACT capsule
+- dynamic commit wrappers appear and disappear with the underlying provider capability
+
+These local and harness files do **not** prove:
 
 - a clean full checkout
 - npm installation from the repository
@@ -24,7 +40,7 @@ These files do **not** prove:
 
 ## GitHub Actions evidence
 
-Current Actions runs have failed before runner allocation. The workflow job contains zero executed steps.
+Current Actions runs have failed before runner allocation. The workflow job contains zero executed steps and no downloadable job log.
 
 Treat this as:
 
@@ -66,4 +82,4 @@ Each file must preserve raw tool output and identify:
 - branch commit SHA
 - default fixed-bridge mode or `?direct=1`
 
-Ordinary Chrome, Playwright and Relay's optional proof console are harness evidence and must never be described as actual ChatGPT evidence.
+Ordinary Chrome, Playwright, deterministic ModelContext doubles and Relay's optional proof console are harness evidence and must never be described as actual ChatGPT evidence.
