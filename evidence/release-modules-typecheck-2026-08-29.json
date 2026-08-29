@@ -1,20 +1,28 @@
 {
-  "schema": "relay.release-modules-typecheck.v1",
-  "sourceCommit": "75aad31f8705bfd90d2d7b637660a59eabc02dc3",
-  "executedAt": "2026-08-29T09:33:00Z",
+  "schema": "relay.release-modules-typecheck.v2",
+  "sourceCommit": "5c389a19c261a9caf636e2797753c06b748f0bfb",
+  "executedAt": "2026-08-29T09:39:21Z",
   "environment": {
+    "node": "v22.16.0",
     "typescript": "5.8.3",
-    "mode": "strict noEmit"
+    "mode": "strict noEmit plus dependency-free runtime smoke"
   },
-  "command": "tsc -p tsconfig-release.json --noEmit",
-  "files": [
-    "apps/relay-command/src/bootstrap.ts",
-    "apps/relay-command/src/compatibility-bridge.ts",
-    "apps/relay-command/src/release-diagnostics.ts",
-    "apps/relay-command/src/release-state.ts",
-    "apps/relay-command/src/scenario-reset.ts"
+  "commands": [
+    "tsc -p /tmp/relay-current-check/tsconfig.json --noEmit",
+    "node --experimental-strip-types /tmp/relay-current-check/runtime-smoke.mjs"
   ],
+  "exactSource": {
+    "packages/webmcp-runtime/src/index.ts": "e412360ec10eea293949056e03ac3bad77902ae6",
+    "apps/relay-command/src/release-diagnostics.ts": "4990da7b235b7388b760900b58806ec5f1954411"
+  },
   "result": "pass",
-  "sourceMode": "The exact release module source was reconstructed from the connected private branch. Repository module APIs were represented by strict declaration stubs matching their exported signatures.",
-  "boundary": "This catches TypeScript and interface errors in the release modules. It is not a full clean checkout, Vite build, Docker build or browser execution."
+  "checks": {
+    "strictTypecheck": "pass",
+    "localRegistrationLedger": "pass",
+    "localToolExecution": "pass",
+    "capabilityRevocation": "pass",
+    "disableDuringRegistrationRace": "pass"
+  },
+  "sourceMode": "The exact current runtime and release-diagnostics source was reconstructed from the connected private branch. Imported PACT and approval-evidence APIs were represented by strict declarations matching their repository exports.",
+  "boundary": "This proves TypeScript and local WebMCP registry behavior for the current release modules. It is not a clean full checkout, Vite build, Docker build, deployed browser run or actual ChatGPT evidence."
 }

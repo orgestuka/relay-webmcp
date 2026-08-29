@@ -1,6 +1,6 @@
 # Relay evidence
 
-Evidence is separated by execution environment. Do not upgrade one evidence class into another in the submission narrative.
+Evidence is separated by execution environment. Never upgrade one evidence class into another in the submission narrative.
 
 ## Local source evidence
 
@@ -8,15 +8,35 @@ Evidence is separated by execution environment. Do not upgrade one evidence clas
 - `release-audit-2026-08-29.json`
 - `release-modules-typecheck-2026-08-29.json`
 
-The first two files prove pure PACT, policy and dynamic-capability properties against core files reconstructed from the connected private branch.
+The core smoke and hostile authorization audit prove pure PACT, policy and dynamic-capability properties against source reconstructed from the connected private branch.
 
-The release-module typecheck proves strict TypeScript compatibility for the bridge, diagnostics, audit-evidence store, bootstrap and reset modules against the repository's exported interfaces.
+The release-module evidence at source commit `5c389a19c261a9caf636e2797753c06b748f0bfb` proves strict TypeScript compatibility and local registration-ledger behavior for the current WebMCP runtime and release diagnostics.
 
-None of these files prove a clean full checkout, Vite production build, Docker build, deployed provider mutation or ChatGPT compatibility.
+These files do **not** prove:
+
+- a clean full checkout
+- npm installation from the repository
+- Vite production builds
+- Docker or Caddy deployment
+- four deployed HTTPS origins
+- browser-level provider mutation
+- actual ChatGPT compatibility
+
+## GitHub Actions evidence
+
+Current Actions runs have failed before runner allocation. The workflow job contains zero executed steps.
+
+Treat this as:
+
+```text
+GITHUB_ACTIONS_INFRA_FAILURE
+```
+
+Do not label it as a code test failure or a successful verification run.
 
 ## Deployment evidence
 
-Create after four HTTPS origins are live:
+Create only after four HTTPS origins are live:
 
 ```text
 evidence/deployment/01-preflight.json
@@ -44,6 +64,6 @@ Each file must preserve raw tool output and identify:
 - test date
 - ChatGPT desktop/browser build when visible
 - branch commit SHA
-- whether the default fixed bridge or `?direct=1` mode was used
+- default fixed-bridge mode or `?direct=1`
 
-Ordinary Chrome, Playwright and Relay's optional proof console are harness evidence and must not be stored or described as actual ChatGPT evidence.
+Ordinary Chrome, Playwright and Relay's optional proof console are harness evidence and must never be described as actual ChatGPT evidence.
