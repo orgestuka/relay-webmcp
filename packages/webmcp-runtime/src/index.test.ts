@@ -3,8 +3,10 @@ import {
   DynamicTool,
   executeLocalRegisteredTool,
   getLocalRegisteredToolNames,
+  installToolInputGuard,
   registerTool,
   toolOutput,
+  type ToolDefinition,
 } from "./index";
 
 const originalDocument = globalThis.document;
@@ -75,6 +77,44 @@ describe("local registration evidence", () => {
 
     second?.abort();
     expect(getLocalRegisteredToolNames()).not.toContain(name);
+  });
+});
+
+describe("tool input guards", () => {
+  it("caps browser and local execution through the same guarded definition", async () => {
+    let browserDefinition: ToolDefinition | null = null;
+    installContext(async (tool) => {
+      browserDefinition = tool as ToolDefinition;
+    });
+
+    const name = "relay_test_guarded_stage";
+    const removeGuard = installToolInputGuard(name, (input) => ({
+      ...input,
+      maxBudget: Math.min(Number(input.maxBudget ?? 3000), 3000),
+    }));
+    const controller = await registerTool({
+      name,
+      description: "Return guarded stage input.",
+      execute: (input: { maxBudget: number }) => input,
+    });
+
+    await expect(executeLocalRegisteredTool(name, { maxBudget: 5000 }))
+      .resolves.toEqual({ maxBudget: 3000 });
+    await expect(browserDefinition?.execute({ maxBudget: 5000 }))
+      .resolves.toEqual({ maxBudget: 3000 });
+
+    controller?.abort();
+    removeGuard();
+  });
+
+  it("rejects guards installed after a tool is already registered", async () => {
+    installContext(async () => {});
+    const name = "relay_test_late_guard";
+    const controller = await registerTool({ name, description: "already live", execute: (input) => input });
+
+    expect(() => installToolInputGuard(name, (input) => input)).toThrow(/before tool registration/);
+
+    controller?.abort();
   });
 });
 
