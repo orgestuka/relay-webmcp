@@ -8,6 +8,7 @@ import {
   type RegisteredTool,
 } from "@relay/webmcp-runtime";
 import { evaluateAuditConsistency } from "./audit-consistency";
+import { normalizeReleaseSha, validReleaseSha } from "./release-provenance";
 import { readApprovalEvidence } from "./release-state";
 
 interface ProviderDiagnosticSpec {
@@ -46,6 +47,8 @@ const originAgentClusterSupported = "originAgentCluster" in window;
 const originAgentCluster = originAgentClusterSupported ? window.originAgentCluster : null;
 const secureContext = window.isSecureContext;
 const originIsolationPass = secureContext && originAgentCluster === true;
+const compiledReleaseSha = normalizeReleaseSha(import.meta.env.VITE_RELEASE_SHA);
+const provenanceRequired = validReleaseSha(compiledReleaseSha);
 
 const providerSpecs: ProviderDiagnosticSpec[] = [
   {
@@ -231,6 +234,25 @@ async function readLocalTool(name: string): Promise<unknown> {
   return parsed.value;
 }
 
+async function readDiagnosticReleaseIdentity(): Promise<unknown> {
+  if (!provenanceRequired) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "Compiled release provenance is intentionally absent in local development.",
+    };
+  }
+  try {
+    return await readLocalTool("relay_get_release_identity");
+  } catch (error) {
+    return {
+      ok: false,
+      code: "RELEASE_IDENTITY_UNAVAILABLE",
+      message: errorMessage(error),
+    };
+  }
+}
+
 async function registerReleaseTools(): Promise<void> {
   const context = getModelContext();
   if (!context) return;
@@ -240,7 +262,7 @@ async function registerReleaseTools(): Promise<void> {
   await registerTool({
     name: "relay_diagnose_webmcp",
     title: "Diagnose Relay WebMCP compatibility",
-    description: "Return machine-readable evidence for release-tool visibility, secure origin isolation, provider discovery, successful read-only provider execution and dynamic toolchange events. This tool never creates proposals or commits capacity.",
+    description: "Return machine-readable evidence for deployed release identity, secure origin isolation, release-tool visibility, provider discovery, successful read-only provider execution and dynamic toolchange events. This tool never creates proposals or commits capacity.",
     inputSchema: {
       type: "object",
       properties: {
@@ -258,6 +280,8 @@ async function registerReleaseTools(): Promise<void> {
       const collection = await collectTools();
       const grouped = groupTools(collection.tools);
       const executeReadProbes = input?.executeReadProbes !== false;
+      const releaseIdentity = await readDiagnosticReleaseIdentity();
+      const provenancePass = semanticSuccess(releaseIdentity);
 
       const providers = [];
       for (const provider of providerSpecs) {
@@ -291,7 +315,8 @@ async function registerReleaseTools(): Promise<void> {
       const compatibilityMode = bridgeTools.length ? "fixed-top-level-bridge-active" : "direct-only";
       const bridgePass = compatibilityMode === "direct-only"
         || (initialBridgeRegistrationPass && initialBridgeVisibilityPass);
-      const overallPass = originIsolationPass
+      const overallPass = provenancePass
+        && originIsolationPass
         && runtimeRegistrationPass
         && clientVisibilityPass
         && providerDiscoveryPass
@@ -303,6 +328,12 @@ async function registerReleaseTools(): Promise<void> {
         capturedAt: new Date().toISOString(),
         commandOrigin,
         compatibilityMode,
+        provenance: {
+          required: provenanceRequired,
+          compiledReleaseSha: compiledReleaseSha || null,
+          provenancePass,
+          releaseIdentity,
+        },
         environment: {
           secureContext,
           originAgentClusterSupported,
