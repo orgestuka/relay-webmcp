@@ -1,5 +1,7 @@
 import { sha256 } from "@relay/pact";
 import {
+  executeLocalRegisteredTool,
+  getLocalRegisteredToolNames,
   getModelContext,
   registerTool,
   toolOutput,
@@ -14,11 +16,21 @@ interface ProviderDiagnosticSpec {
   expectedTools: string[];
 }
 
+interface ToolCollection {
+  tools: RegisteredTool[];
+  errors: {
+    local?: string;
+    remote?: string;
+  };
+}
+
 interface ToolchangeEvidence {
   sequence: number;
   capturedAt: string;
   reason: "initial" | "toolchange" | "diagnostic";
+  runtimeRegisteredTools: string[];
   toolsByOrigin: Record<string, string[]>;
+  discoveryErrors: ToolCollection["errors"];
 }
 
 const commandOrigin = window.location.origin;
@@ -52,9 +64,27 @@ const permanentRelayTools = [
   "relay_get_audit_bundle",
 ];
 
+const expectedInitialBridgeTools = [
+  "relay_bridge_status",
+  "relay_bridge_shelter_find_capacity",
+  "relay_bridge_shelter_propose_reservation",
+  "relay_bridge_transit_find_accessible_routes",
+  "relay_bridge_transit_propose_reservation",
+  "relay_bridge_supply_check_stock",
+  "relay_bridge_supply_propose_reservation",
+];
+
 const evidence: ToolchangeEvidence[] = [];
 let evidenceSequence = 0;
 let captureTimer: number | null = null;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown WebMCP failure";
+}
 
 function normalizeToolOrigin(tool: RegisteredTool): string {
   return typeof tool.origin === "string" && tool.origin ? tool.origin : commandOrigin;
@@ -69,13 +99,35 @@ function deduplicateTools(tools: RegisteredTool[]): RegisteredTool[] {
   return [...unique.values()];
 }
 
-async function collectTools(): Promise<RegisteredTool[]> {
+async function collectTools(): Promise<ToolCollection> {
   const context = getModelContext();
-  if (!context?.getTools) return [];
+  if (!context?.getTools) {
+    return {
+      tools: [],
+      errors: { local: "document.modelContext.getTools is unavailable" },
+    };
+  }
 
-  const local = await context.getTools();
-  const remote = await context.getTools({ fromOrigins: providerSpecs.map((provider) => provider.origin) });
-  return deduplicateTools([...local, ...remote]);
+  let local: RegisteredTool[] = [];
+  let remote: RegisteredTool[] = [];
+  const errors: ToolCollection["errors"] = {};
+
+  try {
+    local = await context.getTools();
+  } catch (error) {
+    errors.local = errorMessage(error);
+  }
+
+  try {
+    remote = await context.getTools({ fromOrigins: providerSpecs.map((provider) => provider.origin) });
+  } catch (error) {
+    errors.remote = errorMessage(error);
+  }
+
+  return {
+    tools: deduplicateTools([...local, ...remote]),
+    errors,
+  };
 }
 
 function groupTools(tools: RegisteredTool[]): Record<string, string[]> {
@@ -90,11 +142,14 @@ function groupTools(tools: RegisteredTool[]): Record<string, string[]> {
 
 async function captureSurface(reason: ToolchangeEvidence["reason"]): Promise<void> {
   try {
+    const collection = await collectTools();
     evidence.push({
       sequence: ++evidenceSequence,
       capturedAt: new Date().toISOString(),
       reason,
-      toolsByOrigin: groupTools(await collectTools()),
+      runtimeRegisteredTools: getLocalRegisteredToolNames(),
+      toolsByOrigin: groupTools(collection.tools),
+      discoveryErrors: collection.errors,
     });
     if (evidence.length > 24) evidence.splice(0, evidence.length - 24);
   } catch (error) {
@@ -110,14 +165,14 @@ function scheduleCapture(reason: ToolchangeEvidence["reason"]): void {
   }, 25);
 }
 
-function parseToolOutput(raw: string | null): { ok: boolean; value?: unknown; error?: string } {
-  if (raw === null) return { ok: false, error: "executeTool returned null" };
+function parseToolOutput(raw: unknown): { ok: boolean; value?: unknown; error?: string } {
+  if (typeof raw !== "string") return { ok: true, value: raw };
   try {
     return { ok: true, value: JSON.parse(raw) as unknown };
   } catch (error) {
     return {
       ok: false,
-      error: `executeTool returned invalid JSON: ${error instanceof Error ? error.message : "parse failure"}`,
+      error: `Tool returned invalid JSON: ${errorMessage(error)}`,
     };
   }
 }
@@ -137,19 +192,49 @@ async function executeExactTool(
     const parsed = parseToolOutput(await context.executeTool(tool, JSON.stringify(input)));
     return parsed.ok ? { ok: true, result: parsed.value } : { ok: false, error: parsed.error };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "executeTool failed" };
+    return { ok: false, error: errorMessage(error) };
   }
 }
 
 async function readLocalTool(name: string): Promise<unknown> {
-  const context = getModelContext();
-  if (!context?.getTools || !context.executeTool) throw new Error("getTools/executeTool unavailable");
-  const tools = await context.getTools();
-  const tool = tools.find((candidate) => normalizeToolOrigin(candidate) === commandOrigin && candidate.name === name);
-  if (!tool) throw new Error(`${name} is not registered on Relay Command`);
-  const parsed = parseToolOutput(await context.executeTool(tool, "{}"));
+  const parsed = parseToolOutput(await executeLocalRegisteredTool(name, {}));
   if (!parsed.ok) throw new Error(parsed.error);
   return parsed.value;
+}
+
+function auditConsistency(planOutput: unknown, approvals: ReturnType<typeof readApprovalEvidence>) {
+  const planEnvelope = isRecord(planOutput) ? planOutput : {};
+  const plan = isRecord(planEnvelope.plan) ? planEnvelope.plan : null;
+  const receipts = Array.isArray(planEnvelope.receipts)
+    ? planEnvelope.receipts.filter(isRecord)
+    : [];
+  const approvedProposalIds = new Set<string>();
+  for (const approval of approvals) {
+    for (const scope of approval.token.payload.scopes) {
+      approvedProposalIds.add(scope.proposalId);
+    }
+  }
+  const receiptProposalIds = receipts
+    .map((receipt) => receipt.proposalId)
+    .filter((value): value is string => typeof value === "string");
+  const uniqueReceiptIds = new Set(receiptProposalIds);
+  const allReceiptsApproved = receiptProposalIds.every((proposalId) => approvedProposalIds.has(proposalId));
+  const planStatus = typeof plan?.status === "string" ? plan.status : null;
+
+  return {
+    planStatus,
+    approvalCount: approvals.length,
+    approvedScopeCount: approvedProposalIds.size,
+    receiptCount: receipts.length,
+    uniqueReceiptProposalCount: uniqueReceiptIds.size,
+    allReceiptsApproved,
+    committed: planStatus === "COMMITTED",
+    pass: planStatus === "COMMITTED"
+      && approvals.length > 0
+      && receipts.length > 0
+      && uniqueReceiptIds.size === receipts.length
+      && allReceiptsApproved,
+  };
 }
 
 async function registerReleaseTools(): Promise<void> {
@@ -176,15 +261,15 @@ async function registerReleaseTools(): Promise<void> {
     execute: async (input: { executeReadProbes?: boolean }) => {
       await captureSurface("diagnostic");
       const modelContext = getModelContext();
-      const tools = await collectTools();
-      const grouped = groupTools(tools);
+      const collection = await collectTools();
+      const grouped = groupTools(collection.tools);
       const executeReadProbes = input?.executeReadProbes !== false;
 
       const providers = [];
       for (const provider of providerSpecs) {
         const visibleTools = grouped[provider.origin] ?? [];
         const probe = executeReadProbes
-          ? await executeExactTool(tools, provider.origin, provider.readTool, { minimum: 0 })
+          ? await executeExactTool(collection.tools, provider.origin, provider.readTool, { minimum: 0 })
           : { ok: false, error: "probe skipped by caller" };
         providers.push({
           id: provider.id,
@@ -198,19 +283,29 @@ async function registerReleaseTools(): Promise<void> {
         });
       }
 
-      const relayTools = grouped[commandOrigin] ?? [];
-      const bridgeTools = relayTools.filter((name) => name.startsWith("relay_bridge_"));
-      const permanentRegistrationPass = permanentRelayTools.every((name) => relayTools.includes(name));
+      const runtimeRegisteredTools = getLocalRegisteredToolNames();
+      const clientVisibleRelayTools = grouped[commandOrigin] ?? [];
+      const bridgeTools = runtimeRegisteredTools.filter((name) => name.startsWith("relay_bridge_"));
+      const runtimeRegistrationPass = permanentRelayTools.every((name) => runtimeRegisteredTools.includes(name));
+      const clientVisibilityPass = permanentRelayTools.every((name) => clientVisibleRelayTools.includes(name));
+      const initialBridgeRegistrationPass = expectedInitialBridgeTools.every((name) => runtimeRegisteredTools.includes(name));
+      const initialBridgeVisibilityPass = expectedInitialBridgeTools.every((name) => clientVisibleRelayTools.includes(name));
       const providerDiscoveryPass = providers.every((provider) => provider.discoveryPass);
       const providerExecutionPass = executeReadProbes
         ? providers.every((provider) => provider.executionPass === true)
         : null;
+      const compatibilityMode = bridgeTools.length ? "fixed-top-level-bridge-active" : "direct-only";
+      const overallPass = runtimeRegistrationPass
+        && clientVisibilityPass
+        && providerDiscoveryPass
+        && (providerExecutionPass ?? true)
+        && (compatibilityMode === "direct-only" || (initialBridgeRegistrationPass && initialBridgeVisibilityPass));
 
       return toolOutput({
-        ok: permanentRegistrationPass && providerDiscoveryPass && (providerExecutionPass ?? true),
+        ok: overallPass,
         capturedAt: new Date().toISOString(),
         commandOrigin,
-        compatibilityMode: bridgeTools.length ? "fixed-top-level-bridge-active" : "direct-only",
+        compatibilityMode,
         api: {
           registerTool: Boolean(modelContext?.registerTool),
           getTools: Boolean(modelContext?.getTools),
@@ -219,21 +314,27 @@ async function registerReleaseTools(): Promise<void> {
         },
         relay: {
           expectedPermanentTools: permanentRelayTools,
-          visibleTools: relayTools,
+          runtimeRegisteredTools,
+          clientVisibleTools: clientVisibleRelayTools,
+          runtimeRegistrationPass,
+          clientVisibilityPass,
           bridgeTools,
-          permanentRegistrationPass,
+          expectedInitialBridgeTools,
+          initialBridgeRegistrationPass,
+          initialBridgeVisibilityPass,
         },
         providers,
         providerDiscoveryPass,
         providerExecutionPass,
+        discoveryErrors: collection.errors,
         toolchange: {
           observedEventCount: evidence.filter((entry) => entry.reason === "toolchange").length,
           captures: evidence,
-          instruction: "Capture once before proposals, once after proposal/commit capability creation and once after staleness or commit teardown. Compare toolsByOrigin and observedEventCount.",
+          instruction: "Capture before proposals, after capability creation and after staleness or commit teardown. Compare runtimeRegisteredTools, toolsByOrigin and observedEventCount.",
         },
         evidenceBoundary: {
           currentDocument: "actual live page",
-          externalClient: "The caller must record that this result came from ChatGPT's built-in browser. Harness execution is not equivalent.",
+          externalClient: "The caller must record whether this result came from ChatGPT's built-in browser. Harness execution is not equivalent.",
         },
       });
     },
@@ -242,7 +343,7 @@ async function registerReleaseTools(): Promise<void> {
   await registerTool({
     name: "relay_get_audit_bundle",
     title: "Export signed-transaction audit evidence",
-    description: "Read Relay's current plan and mesh state, include every PACT approval token observed at provider commit and bind the complete evidence bundle to a canonical SHA-256 digest. Read-only.",
+    description: "Read Relay's local plan and mesh snapshots without recursively invoking WebMCP, include every provider-accepted PACT approval token and bind the complete evidence bundle to a canonical SHA-256 digest. Read-only.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, untrustedContentHint: false },
     execute: async () => {
@@ -256,31 +357,42 @@ async function registerReleaseTools(): Promise<void> {
           return toolOutput({
             ok: false,
             code: "APPROVAL_EVIDENCE_MISSING",
-            message: "No signed PACT approval token has passed through a fixed provider commit bridge in this page session.",
+            message: "No provider-accepted PACT approval token has passed through a fixed commit bridge in this page session.",
           });
         }
+        const consistency = auditConsistency(plan, approvals);
         const bundle = {
           schema: "relay.audit.v1",
           capturedAt: new Date().toISOString(),
           commandOrigin,
           providerOrigins: Object.fromEntries(providerSpecs.map((provider) => [provider.id, provider.origin])),
           approvals,
+          consistency,
           plan,
           mesh,
         };
+        const digest = await sha256(bundle);
+        if (!consistency.pass) {
+          return toolOutput({
+            ok: false,
+            code: "AUDIT_STATE_INCONSISTENT",
+            algorithm: "SHA-256",
+            digest,
+            bundle,
+          });
+        }
         return toolOutput({
           ok: true,
           algorithm: "SHA-256",
-          approvalCount: approvals.length,
-          digest: await sha256(bundle),
+          digest,
           bundle,
         });
       } catch (error) {
         return toolOutput({
           ok: false,
           code: "AUDIT_CAPTURE_UNAVAILABLE",
-          message: error instanceof Error ? error.message : "Unable to capture Relay audit state",
-          fallback: "Call relay_get_plan and relay_get_mesh_state directly, preserve their raw JSON outputs and record that nested executeTool was unavailable.",
+          message: errorMessage(error),
+          fallback: "Call relay_get_plan and relay_get_mesh_state directly and preserve their raw JSON outputs.",
         });
       }
     },
