@@ -2,16 +2,17 @@
 
 ## Authoritative checkpoint
 
-This ledger was generated against the release source head:
+This ledger covers the release code and evidence checkpoints:
 
 ```text
-branch: build/pact-vertical-slice
-source: 5c389a19c261a9caf636e2797753c06b748f0bfb
-base:   main @ d89fbadceb4bed68d4745a3dbc25397c4e764796
-PR:     #1, open and draft
+branch:   build/pact-vertical-slice
+code:     5523e9d4a5cc5d2dd446571b76a5c7447e324193
+evidence: 4ccff50ea870cce9631ed7548fb7dff118e02bbd
+base:     main @ d89fbadceb4bed68d4745a3dbc25397c4e764796
+PR:       #1, open and draft
 ```
 
-The commit containing this ledger is a documentation-and-evidence-only child of the source head above. Use the PR head or `git rev-parse HEAD` as the final checkout SHA.
+The commit containing this ledger is a documentation-only child of the evidence checkpoint. Use the PR head or `git rev-parse HEAD` as the final checkout SHA.
 
 `main` must remain frozen until every external gate passes.
 
@@ -31,6 +32,7 @@ The commit containing this ledger is a documentation-and-evidence-only child of 
 | --- | --- |
 | `LOCAL_RECONSTRUCTED_CORE` | Current source reconstructed from the connected private branch and executed locally. Not a clean full checkout. |
 | `LOCAL_INTERFACE_TYPECHECK` | Exact release source typechecked against strict declarations matching repository exports. Not a Vite build. |
+| `LOCAL_DIAGNOSTIC_RUNTIME` | Exact current diagnostic source executed against deterministic WebMCP runtime doubles. Not a deployed browser. |
 | `REPOSITORY_CODE_REVIEW` | Static inspection only. |
 | `GITHUB_ACTIONS_INFRA_FAILURE` | GitHub allocated no runner and executed zero steps. Not code evidence. |
 | `DEPLOYED_FOUR_ORIGIN` | Evidence produced against four real HTTPS origins. |
@@ -54,7 +56,7 @@ clean checkout passes
 
 # Current recommendation: **DO NOT MERGE**
 
-The code is at the external-proof boundary. Deployment inputs and actual ChatGPT evidence are absent.
+The implementation has reached the external-proof boundary. Real deployment inputs and actual ChatGPT evidence are still absent.
 
 ---
 
@@ -86,7 +88,8 @@ The code is at the external-proof boundary. Deployment inputs and actual ChatGPT
 | Dynamic capability mirroring | **PARTIAL** | `toolchange`, race-safe `DynamicTool` and periodic discovery fallback | Needs actual browser evidence. |
 | Provider-side authorization preserved | **PARTIAL** | Commit bridge invokes provider commit tool; provider verifies PACT | Needs deployed commit proof. |
 | Local registration evidence without recursive WebMCP | **PASS** | Local registry runtime smoke and current diagnostics typecheck | Browser client visibility still needs ChatGPT proof. |
-| Provider-accepted approval capture | **PARTIAL** | Token recorded only after provider returns `ok: true` | Needs final deployed audit bundle. |
+| Provider read probes fail closed | **PASS** | Parsed `{ok:false}` provider response rejected in deterministic runtime; three `{ok:true}` probes accepted | Actual provider calls still require deployed evidence. |
+| Provider-accepted approval capture | **PARTIAL** | Token recorded only after provider returns `ok:true` | Needs final deployed audit bundle. |
 | Direct descendant mode isolated | **PASS** | `?direct=1` exists only for diagnosis | Static evidence. |
 
 Exact manual procedure and expected JSON:
@@ -105,6 +108,8 @@ tsc -p tsconfig.json --noEmit
 node --experimental-strip-types scripts/release-audit.ts
 tsc -p /tmp/relay-current-check/tsconfig.json --noEmit
 node --experimental-strip-types /tmp/relay-current-check/runtime-smoke.mjs
+tsc -p /tmp/relay-diag-check/tsconfig.json --noEmit
+node --experimental-strip-types /tmp/relay-diag-runtime/run.mts
 ```
 
 Evidence:
@@ -112,13 +117,16 @@ Evidence:
 - `evidence/local-core-smoke-2026-08-29.json`
 - `evidence/release-audit-2026-08-29.json`
 - `evidence/release-modules-typecheck-2026-08-29.json`
+- `evidence/release-diagnostics-semantic-probe-2026-08-29.json`
 
 Boundaries:
 
-- Core and current release source were reconstructed from the connected private branch.
-- Exact current WebMCP runtime and release diagnostics passed strict typecheck.
+- Core and release source were reconstructed from the connected private branch.
+- Exact WebMCP runtime and release diagnostics passed strict typecheck.
 - Local registration, execution, revocation and disable-during-registration race passed.
-- This is not a clean checkout, production build, Docker deployment or browser run.
+- Diagnostic probes now reject semantic provider failures instead of treating valid JSON as success.
+- `@types/node` is pinned so the root strict typecheck can resolve Node release scripts on a clean install.
+- None of this is a clean full checkout, Vite build, Docker deployment or browser run.
 
 ### Required hostile cases
 
@@ -147,7 +155,7 @@ Boundaries:
 | Full verification | **NOT RUN** | `npm run verify` | future log | Same blocker. |
 | Four production builds | **NOT RUN** | included in `npm run verify` | future log | Same blocker. |
 | Docker build | **NOT RUN** | compose or CI build | future log | Docker unavailable here. |
-| GitHub Actions | **BLOCKED** | automatic workflow | run `33245867200`, job `99083083778` | Job executed zero steps because no runner was allocated. Not a code failure. |
+| GitHub Actions | **BLOCKED** | automatic workflow | run `33246318784`, job `99084291557` | `runner_id: 0`, empty runner name and `steps: []`. No repository command executed. |
 
 ---
 
