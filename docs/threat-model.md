@@ -2,34 +2,36 @@
 
 ## 1. Security objective
 
-Relay must let an agent compose operations across independent WebMCP sites without turning the user's objective into blanket execution authority.
+Relay lets an agent compose operations across independent WebMCP sites without turning the user's objective into blanket execution authority.
 
-The core security claim is:
+The core claim is:
 
-> Provider mutation requires a live provider proposal plus an exact, short-lived human approval that the provider verifies independently.
+> Before exact human consent, the agent has no top-level provider commit capability. After consent, each consequential capability is short-lived, exact, origin-bound and independently verified by its provider.
 
 ## 2. Protected assets
 
 - human intent and hard constraints
 - maximum transaction authority
+- agent-visible capability surface
 - provider inventory and state version
 - non-binding proposal contents
 - ephemeral Relay session private key
-- trusted session public key at each provider
+- trusted public key at each provider
 - signed approval payload
-- provider commit receipts
+- provider receipts
 - provenance of which origin committed what
-- integrity of the agent-visible capability surface
+- identity of the exact deployed source commit
+- integrity of final audit evidence
 
 ## 3. Actors
 
 ### Human
 
-Trusted to approve or reject the visible exact transaction.
+Trusted to approve or reject the exact visible transaction.
 
 ### Relay Command origin
 
-Trusted to render the consent surface and protect the ephemeral session private key.
+Trusted to render consent, protect the ephemeral private key and expose only authority-compatible top-level tools.
 
 ### Provider origins
 
@@ -39,16 +41,21 @@ A provider may return incorrect data. Relay cannot make an independent website h
 
 ### Browser agent
 
-Untrusted with respect to authorization. The agent may:
+Untrusted for authorization. The agent may:
 
 - call tools in an unexpected order
+- retain stale tool references
 - repeat calls
-- omit scopes
-- alter arguments
+- omit or alter scopes
 - present stale data
-- attempt to replay or mix approval tokens
+- replay or mix approval tokens
+- request restoration of a broader prior authority ceiling
 
-Schema-shaped agent input is never treated as proof of authority.
+Schema-shaped agent input and natural-language rationale are never proof of authority.
+
+### Network edge and proxy chain
+
+Operationally trusted to serve the configured TLS origins and headers, but treated as a potential source of stale or conflicting release metadata. Runtime evidence therefore checks edge headers against compiled and manifest identity.
 
 ### External content
 
@@ -56,163 +63,213 @@ Untrusted. The deterministic competition fixture avoids external content inside 
 
 ## 4. Trust boundaries
 
-### 4.1 Agent to WebMCP tool
+### 4.1 Agent to Relay bridge
 
-The tool implementation validates every consequential input. Agent intent and natural-language rationale do not authorize mutation.
+The fixed bridge exposes no arbitrary origin or tool selector.
 
-### 4.2 Relay origin to provider origin
+Read and proposal wrappers mirror exact provider tools. Consequential wrappers require live `APPROVED` plan status when registered and immediately before invocation.
 
-Providers are independent documents embedded with `allow="tools"`.
+### 4.2 Agent to provider execution
 
-Tool exposure is restricted with `exposedTo`.
+Even a visible commit wrapper is not sufficient authority. The provider validates every consequential input and independently verifies the signed PACT token.
 
-Visible state messages require both exact origin and exact window-source binding.
+### 4.3 Relay origin to provider origin
 
-### 4.3 Human to approval token
+Providers are independent documents embedded with `allow="tools"` and limit exposure with `exposedTo`.
 
-The human approves the rendered proposal set. Relay signs a capsule containing exact operation scopes, total authority and expiry.
+Visible state messages require exact origin and exact window-source binding.
 
-### 4.4 Provider to provider
+### 4.4 Human to approval token
+
+The human approves the rendered proposal set and authority ceiling. Relay signs exact operation scopes, plan hash, session and expiry.
+
+### 4.5 Provider to provider
 
 Providers do not trust each other. A Shelter Grid scope cannot authorize Transit Ops or Supply Hub.
 
-### 4.5 Proof runner to application
+### 4.6 Deployed application to reviewed source
 
-The built-in proof runner is trusted only as an evaluator. It is structurally restricted to WebMCP discovery and execution and receives no direct reference to internal state or signing functions.
+Production Relay is trusted only when compiled SHA, trusted edge header and `/release.json` identify the same validated Git commit.
+
+### 4.7 Proof runner to application
+
+The optional proof runner is a harness evaluator restricted to WebMCP discovery and execution. It has no direct internal state or signing reference and is not actual ChatGPT evidence.
 
 ## 5. Threats and mitigations
 
 ### 5.1 Agent attempts to commit before approval
 
-**Threat:** The agent invokes a provider commit tool after proposal creation but before a human decision.
+**Threat:** A provider has prepared a local commit implementation after proposal creation and the agent attempts consequential execution before consent.
 
-**Mitigation:** Provider commit requires a signed approval token verified against the active Relay session public key. Proposal creation never consumes capacity.
+**Mitigation:** Relay Command does not expose a top-level commit wrapper unless the exact plan is `APPROVED`. The provider also requires a valid signed PACT token. Proposal creation never consumes capacity.
 
-### 5.2 Agent changes an approved operation
+### 5.2 Agent retains a stale commit wrapper
+
+**Threat:** The agent captures a wrapper while approved and invokes it after the plan becomes stale, rejected or otherwise loses authority.
+
+**Mitigation:** Every bridge invocation re-reads live plan status. Non-`APPROVED` status returns `HUMAN_APPROVAL_REQUIRED` without calling the provider. Periodic and event-driven synchronization removes the obsolete wrapper.
+
+### 5.3 Agent changes an approved operation
 
 **Threat:** The agent preserves a proposal ID but changes resource, quantity, unit, price, purpose, origin, version or expiry.
 
-**Mitigation:** Every operation field is inside the signed proposal scope. The provider compares the signed scope with its provider-owned proposal object.
+**Mitigation:** Every operation field is signed. The provider compares the signed scope with its provider-owned proposal object.
 
-### 5.3 Agent submits only a favorable subset
+### 5.4 Agent submits only a favorable subset
 
 **Threat:** The human approves several same-provider operations but the agent commits only part of them.
 
 **Mitigation:** The provider requires the complete approved proposal set for its origin exactly once. Partial batches fail with `INCOMPLETE_PROVIDER_BATCH`.
 
-### 5.4 Aggregate cost exceeds human authority
+### 5.5 Agent tries to restore broader authority during recovery
 
-**Threat:** Each individual operation appears beneath the ceiling while their sum exceeds it.
+**Threat:** After a human narrows authority from €5,000 to €3,000, stale recovery requests the original ceiling.
 
-**Mitigation:** PACT validates integer-cent arithmetic for every scope and rejects the token when aggregate scope cost exceeds `maximumCost`.
+**Mitigation:** Relay keeps a durable monotonic human ceiling and caps stage input. Authority may remain equal or tighten, never expand through agent action.
 
-### 5.5 Signed scope contains inconsistent arithmetic
+### 5.6 Aggregate cost exceeds human authority
+
+**Threat:** Each operation appears beneath the ceiling while their sum exceeds it.
+
+**Mitigation:** PACT validates integer-cent arithmetic and rejects aggregate scope cost above `maximumCost`.
+
+### 5.7 Signed scope contains inconsistent arithmetic
 
 **Threat:** `maxCost` differs from `quantity × unitCost`.
 
-**Mitigation:** The approval envelope rejects inconsistent scope arithmetic before provider mutation.
+**Mitigation:** Approval validation rejects inconsistent scope arithmetic before provider mutation.
 
-### 5.6 Provider state changes after planning
+### 5.8 Provider state changes after planning
 
-**Threat:** Capacity or price changes after proposal composition.
+**Threat:** Capacity changes after proposal composition.
 
-**Mitigation:** Every mutation advances provider `stateVersion`. Proposals bind the exact version. Any provider state advance deletes all old proposals and removes the commit capability.
+**Mitigation:** Every mutation advances `stateVersion`. Proposals bind that version. Any provider advance deletes old proposals, revokes the provider commit implementation, makes Relay stale and removes top-level consequential authority.
 
-### 5.7 Proposal expires silently
+### 5.9 Proposal expires silently
 
-**Threat:** An old proposal remains visible as a callable commit path after its TTL.
+**Threat:** An expired proposal remains callable.
 
-**Mitigation:** Providers schedule the earliest proposal expiry, prune expired proposals automatically and revoke the dynamic commit tool when no current proposals remain.
+**Mitigation:** Providers schedule expiry, prune proposals and revoke commit implementations. Bridge synchronization removes corresponding wrappers. Providers still reject expired proposals if a stale reference survives.
 
-### 5.8 Approval replay
+### 5.10 Approval replay
 
 **Threat:** A previously valid token is replayed later.
 
-**Mitigation:** Approval is bound to a browser session and short expiry. Committed proposals are removed. Provider state advances after commit, invalidating old versions.
+**Mitigation:** Approval is session-bound and short-lived. Committed proposals are removed and provider versions advance.
 
-### 5.9 Approval is mixed across sessions
+### 5.11 Approval is mixed across sessions
 
-**Threat:** A token signed in another Relay session is presented to a provider.
+**Threat:** A token from another Relay session is presented.
 
-**Mitigation:** The token session ID must equal the provider's active trusted Relay session.
+**Mitigation:** Token session ID must equal the provider's trusted active session. Final audit closure also requires matching approvals to come from one session.
 
-### 5.10 Public-key substitution
+### 5.12 Public-key substitution
 
-**Threat:** A different key is presented under an existing session ID so an attacker can sign new authority.
+**Threat:** A different key is presented under an existing session ID.
 
 **Mitigation:** Providers fingerprint the accepted P-256 public key and reject same-session key changes.
 
-### 5.11 Private key material supplied as a public key
+### 5.13 Private key material supplied as public trust
 
-**Threat:** A malformed JWK contains private field `d` or signing key operations.
+**Threat:** A JWK contains private field `d` or signing key operations.
 
 **Mitigation:** Providers accept only P-256 public verification JWKs without private material or signing operations.
 
-### 5.12 Cross-origin confused deputy
+### 5.14 Cross-origin confused deputy
 
-**Threat:** An approval for one provider is reused against another.
+**Threat:** Approval for one provider is reused against another.
 
-**Mitigation:** Each signed scope binds provider ID and exact provider origin. Providers require their own identity and origin.
+**Mitigation:** Every signed scope binds provider ID and exact provider origin. Fixed bridge wrappers also bind one exact origin and tool name.
 
-### 5.13 Cross-frame message spoofing
+### 5.15 Cross-frame message spoofing
 
-**Threat:** Another child window sends a correctly shaped provider message.
+**Threat:** Another child window sends correctly shaped provider data.
 
-**Mitigation:** Relay checks both `event.origin` and `event.source` against the configured persistent provider iframe.
+**Mitigation:** Relay checks both `event.origin` and `event.source` against the exact persistent provider iframe.
 
-### 5.14 Production origin misconfiguration
+### 5.16 Production origin or browser-isolation misconfiguration
 
-**Threat:** A deployment accidentally shares provider origins, uses insecure HTTP or points production at localhost.
+**Threat:** Deployment shares origins, uses insecure HTTP, delegates to localhost or omits origin-agent-cluster isolation.
 
-**Mitigation:** Relay bootstrap rejects invalid origin meshes before loading command logic or registering tools.
+**Mitigation:** Relay boot validates the origin mesh and secure context. Source and deployed gates require `Origin-Agent-Cluster: ?1` across Vite, Nginx and Caddy. A fresh ChatGPT browsing context is required after isolation changes.
 
-### 5.15 Partial mutation inside a provider
+### 5.17 Partial mutation inside a provider
 
-**Threat:** One operation consumes capacity before another operation in the same provider batch fails.
+**Threat:** One local operation consumes capacity before another fails.
 
-**Mitigation:** The provider validates the complete local demand map before applying any resource mutation.
+**Mitigation:** Provider validates the complete demand map before any mutation.
 
-### 5.16 Partial completion across providers
+### 5.18 Partial completion across providers
 
-**Threat:** One provider commits and a later provider fails.
+**Threat:** One provider commits and another later fails.
 
-**Mitigation:** Relay does not claim distributed atomicity. Origin-bound receipts make partial completion visible. Production use requires compensation or prepare/commit semantics.
+**Mitigation:** Relay makes partial completion explicit through receipts and does not claim distributed atomicity. Audit bundle v2 fails until exact final receipt closure. Production use requires compensation or prepare/commit semantics.
 
-### 5.17 Dynamic tool registration race
+### 5.19 Dynamic registration race
 
-**Threat:** A capability is disabled while its registration Promise is pending, then appears after it should be revoked.
+**Threat:** A capability is disabled while registration is pending, then appears after revocation.
 
-**Mitigation:** `DynamicTool` uses generation tracking, coalesces concurrent enables and aborts obsolete registrations after completion.
+**Mitigation:** `DynamicTool` uses generations, coalesces enables and aborts obsolete registrations after completion.
 
-### 5.18 Tool-result truncation
+### 5.20 Initial bridge readiness race
 
-**Threat:** A signed token or proposal ID is cut into invalid JSON for context-size reasons.
+**Threat:** ChatGPT calls diagnostics immediately after page load and observes a transiently incomplete fixed bridge.
 
-**Mitigation:** Protocol tool results are never truncated. Callers return deliberately compact objects instead.
+**Mitigation:** Relay waits for the exact permanent read/proposal bridge surface for a bounded interval before registering diagnostics. Failure is logged and remains diagnosable; boot cannot hang indefinitely.
 
-### 5.19 HTML injection through agent or provider text
+### 5.21 Tool-result truncation
 
-**Threat:** Purpose, rationale, provider data or tool metadata contains markup.
+**Threat:** A token, proposal ID or receipt is cut into invalid JSON.
 
-**Mitigation:** Command and provider pages escape rendered values. The capability surface uses DOM `textContent` rather than metadata interpolation.
+**Mitigation:** Protocol outputs are never truncated. Callers return deliberately compact objects.
 
-### 5.20 Malicious external content influences the model
+### 5.22 HTML injection through agent or provider text
 
-**Threat:** Provider output includes prompt-injection text that attempts to expand authority.
+**Threat:** Purpose, rationale or provider data contains markup.
 
-**Mitigation:** The competition scenario uses deterministic fixtures. Tools carrying untrusted text are annotated with `untrustedContentHint`. Authorization remains cryptographic and exact even if the agent is persuaded to make a bad request.
+**Mitigation:** Rendered values are escaped. Capability metadata uses DOM `textContent`.
 
-### 5.21 Human approves a bad but internally valid plan
+### 5.23 Malicious content influences the model
 
-**Threat:** The human intentionally or mistakenly approves exact harmful operations.
+**Threat:** Provider output contains prompt injection that attempts to expand authority.
 
-**Mitigation:** Relay provides visibility, deterministic hard-constraint checks and precise scope. It cannot replace human judgment for every policy objective.
+**Mitigation:** Competition fixtures are deterministic. Untrusted tools are annotated. Authorization remains exact and cryptographic even if the model requests something invalid.
 
-### 5.22 Compromised trusted origin
+### 5.24 Human approves a bad but internally valid plan
+
+**Threat:** The human approves harmful but policy-valid operations.
+
+**Mitigation:** Relay provides visibility, deterministic hard constraints and precise scope. It cannot replace human judgment for every policy objective.
+
+### 5.25 Stale or mixed deployed release
+
+**Threat:** The repository, application bundle, proxy header and release manifest identify different commits.
+
+**Mitigation:** Non-local boot requires a valid compiled SHA. `relay_get_release_identity` requires:
+
+```text
+compiled SHA = one consistent edge SHA = manifest SHA
+```
+
+Non-success manifests, wrong app identity, malformed SHA and conflicting duplicate edge headers fail. Deployment smoke verifies both root and manifest responses on all four origins.
+
+### 5.26 Evidence changes the commit being proved
+
+**Threat:** Runtime evidence is committed after deployment, creating a new commit while the old deployment is described as current.
+
+**Mitigation:** Generated evidence defaults to ignored `.relay-artifacts/`. Committed runtime evidence requires rebuilding, redeploying and revalidating the new SHA.
+
+### 5.27 Final audit accepts partial or altered closure
+
+**Threat:** A plan claims `COMMITTED` despite missing, duplicated, malformed or changed receipt/scope evidence.
+
+**Mitigation:** Audit bundle v2 recomputes the final plan hash and requires exact plan, matching approval scope and receipt equality, one session, reconciled totals and successful release identity.
+
+### 5.28 Compromised trusted origin
 
 **Threat:** Arbitrary script execution occurs on Relay Command or a provider.
 
-**Mitigation:** Out of scope for the browser-only reference implementation. Production use requires authenticated services, CSP, dependency controls, durable audit and hardware-backed or service-side signing.
+**Mitigation:** CSP, dependency locking, read-only containers and provenance checks reduce exposure but do not make arbitrary trusted-origin compromise safe. Production use requires authenticated services, durable audit and hardware-backed or service-side signing.
 
 ## 6. Denial-of-service considerations
 
@@ -223,16 +280,17 @@ The prototype limits:
 - text and identifier lengths
 - approval lifetime
 - proposal lifetime
+- initial bridge readiness wait
 
-An agent can still create noise within these bounds. Production providers should add identity, rate limits, quotas and abuse monitoring.
+An agent can still create noise within these bounds. Production providers need identity, rate limits, quotas and abuse monitoring.
 
-## 7. What PACT authorization does not prove
+## 7. What PACT authorization proves
 
 A valid PACT token proves:
 
-- a trusted Relay session key signed this exact payload
-- the payload contains a bounded exact operation set
-- the token was live when checked
+- a trusted Relay session key signed the exact payload
+- payload contains a bounded exact operation set
+- token was live when checked
 
 It does not prove:
 
@@ -241,17 +299,18 @@ It does not prove:
 - truthfulness of provider inventory
 - delivery of a physical service
 - cross-origin atomic completion
+- absence of arbitrary code execution on a trusted origin
 
 ## 8. Non-claims
 
 Relay does not claim:
 
-- distributed ACID transactions across the public web
+- distributed ACID across the public web
 - production-grade emergency dispatch reliability
 - durable authentication or access control
-- safety after arbitrary code execution on a trusted origin
+- safety after arbitrary trusted-origin compromise
 - protection against a provider lying about its own state
 
 The implemented claim is narrower:
 
-> WebMCP actions can be composed across independent origins while exact human consent, provider provenance, capability revocation and stale-state protection remain visible and enforceable.
+> WebMCP actions can be composed across independent origins while exact human consent, bounded authority, provider provenance, capability revocation, stale-state protection and deployed-source identity remain visible and enforceable.
