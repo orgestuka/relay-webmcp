@@ -14,12 +14,14 @@ const files = {
   transitVite: "apps/transit-ops/vite.config.ts",
   supplyVite: "apps/supply-hub/vite.config.ts",
   bootstrap: "apps/relay-command/src/bootstrap.ts",
+  bridgeReadiness: "apps/relay-command/src/bridge-readiness.ts",
   releaseProvenance: "apps/relay-command/src/release-provenance.ts",
   releaseIdentity: "apps/relay-command/src/release-identity.ts",
   bridge: "apps/relay-command/src/compatibility-bridge.ts",
   diagnostics: "apps/relay-command/src/release-diagnostics.ts",
   audit: "apps/relay-command/src/audit-consistency.ts",
   releaseGate: "scripts/release-gate.mjs",
+  deploymentSmoke: "scripts/deployment-smoke.mjs",
   scriptSyntax: "scripts/check-script-syntax.mjs",
 };
 
@@ -111,12 +113,18 @@ check("bootstrap_secure_context", bootstrap.includes("window.isSecureContext"), 
 check("bootstrap_origin_isolation", bootstrap.includes("window.originAgentCluster !== true"), files.bootstrap, "Relay boot must fail in a non-origin-keyed cluster.");
 check("bootstrap_release_provenance", bootstrap.includes("assertCompiledReleaseSha") && bootstrap.includes("VITE_RELEASE_SHA") && bootstrap.includes("localDevelopment: commandIsLocal"), files.bootstrap, "A non-local Relay boot must fail without an exact source SHA.");
 check("bootstrap_distinct_origins", bootstrap.includes("Every WebMCP provider must run on a distinct origin"), files.bootstrap, "Provider origins cannot collapse into one trust boundary.");
+check("bootstrap_bounded_bridge_readiness", bootstrap.includes('import("./bridge-readiness")') && bootstrap.includes("waitForInitialBridgeSurface") && bootstrap.includes("if (!readiness.pass)"), files.bootstrap, "Diagnostics must not become callable before a bounded initial fixed-bridge readiness check completes.");
+
+const bridgeReadiness = content.bridgeReadiness ?? "";
+check("bridge_readiness_exact_surface", bridgeReadiness.includes("expectedInitialBridgeTools") && bridgeReadiness.includes("relay_bridge_status") && bridgeReadiness.includes("relay_bridge_supply_propose_reservation") && bridgeReadiness.includes("missingInitialBridgeTools"), files.bridgeReadiness, "Initial readiness must require every permanent read/proposal bridge wrapper and no consequential wrapper.");
+check("bridge_readiness_bounded_wait", bridgeReadiness.includes("timeoutMs ?? 1_500") && bridgeReadiness.includes("intervalMs ?? 50") && bridgeReadiness.includes("elapsed >= timeoutMs"), files.bridgeReadiness, "Initial bridge readiness must be bounded rather than hanging Relay boot indefinitely.");
 
 const releaseProvenance = content.releaseProvenance ?? "";
 check("release_sha_validator", releaseProvenance.includes("validReleaseSha") && releaseProvenance.includes("assertCompiledReleaseSha") && releaseProvenance.includes("non-zero 40-character Git commit"), files.releaseProvenance, "All browser release checks must share one exact SHA validator.");
+check("release_header_conflict_rejection", releaseProvenance.includes("consistentHeaderValue") && releaseProvenance.includes("new Set(values)") && releaseProvenance.includes("unique.size === 1"), files.releaseProvenance, "Identical repeated edge headers may normalize, but conflicting identity values must fail closed.");
 
 const releaseIdentity = content.releaseIdentity ?? "";
-check("release_identity_tool", releaseIdentity.includes('name: "relay_get_release_identity"') && releaseIdentity.includes('fetch("/release.json"') && releaseIdentity.includes('response.headers.get("x-relay-release")') && releaseIdentity.includes("compiledSha === edgeSha") && releaseIdentity.includes("edgeSha === manifestSha"), files.releaseIdentity, "ChatGPT needs a read-only proof that compiled, edge and manifest identities match.");
+check("release_identity_tool", releaseIdentity.includes('name: "relay_get_release_identity"') && releaseIdentity.includes('fetch("/release.json"') && releaseIdentity.includes('response.headers.get("x-relay-release")') && releaseIdentity.includes("consistentHeaderValue(edgeHeaderRaw)") && releaseIdentity.includes("edgeHeaderConsistent") && releaseIdentity.includes("compiledSha === edgeSha") && releaseIdentity.includes("edgeSha === manifestSha"), files.releaseIdentity, "ChatGPT needs a conflict-safe read-only proof that compiled, edge and manifest identities match.");
 
 const bridge = content.bridge ?? "";
 check("bridge_fixed_origins", bridge.includes("exactRemoteTool") && bridge.includes("fromOrigins: [spec.origin]") && bridge.includes("arbitraryOriginSelection: false"), files.bridge, "Bridge execution must remain fixed to exact provider origin and tool pairs.");
@@ -136,6 +144,11 @@ check("audit_exact_receipt_set", audit.includes("receiptCoverageExact") && audit
 check("audit_aggregate_equality", audit.includes("planTotalMatchesProposals") && audit.includes("receiptTotalMatchesPlan"), files.audit, "Plan, proposal and receipt aggregates must agree.");
 check("audit_safe_reapproval", audit.includes("matchingApprovals.every") && audit.includes("matchingSessions.size === 1"), files.audit, "Safe exact reapproval may be tolerated only when every matching capsule is exact and remains in one session.");
 
+const deploymentSmoke = content.deploymentSmoke ?? "";
+check("smoke_root_and_manifest_identity", deploymentSmoke.includes("pageHeaderRaw") && deploymentSmoke.includes("manifestHeaderRaw") && deploymentSmoke.includes("pageHeaderSha === expectedSha") && deploymentSmoke.includes("manifestHeaderSha === expectedSha"), files.deploymentSmoke, "The deployed root and manifest responses must independently identify the expected release.");
+check("smoke_conflicting_header_rejection", deploymentSmoke.includes("function consistentHeaderValue") && deploymentSmoke.includes("new Set(values).size === 1") && deploymentSmoke.includes("consistentHeaderValue(pageHeaderRaw)") && deploymentSmoke.includes("consistentHeaderValue(manifestHeaderRaw)"), files.deploymentSmoke, "Deployment smoke must reject conflicting duplicate security or release headers.");
+check("smoke_manifest_oac_and_cache", deploymentSmoke.includes("manifestOriginAgentCluster === \"?1\"") && deploymentSmoke.includes("noStore(manifestCacheControl)"), files.deploymentSmoke, "The release manifest itself must preserve origin isolation and no-store semantics.");
+
 const scripts = packageJson?.scripts ?? {};
 check("package_release_gate", scripts["gate:source"] === "node scripts/release-gate.mjs" && scripts["gate:release"] === "node scripts/release-gate.mjs --full --dns", files.package, "Operators need one source gate and one full fail-closed release command.");
 check("package_script_checks", scripts["check:scripts"] === "node scripts/check-script-syntax.mjs", files.package, "Every release script must be syntax-checked before build.");
@@ -152,7 +165,7 @@ check("script_syntax_gate", (content.scriptSyntax ?? "").includes('process.execP
 
 const failures = checks.filter((entry) => !entry.pass);
 const report = {
-  schema: "relay.release-surface-check.v2",
+  schema: "relay.release-surface-check.v3",
   checkedAt: new Date().toISOString(),
   pass: failures.length === 0,
   checkCount: checks.length,
