@@ -117,7 +117,7 @@ check("bootstrap_bounded_bridge_readiness", bootstrap.includes('import("./bridge
 
 const bridgeReadiness = content.bridgeReadiness ?? "";
 check("bridge_readiness_exact_surface", bridgeReadiness.includes("expectedInitialBridgeTools") && bridgeReadiness.includes("relay_bridge_status") && bridgeReadiness.includes("relay_bridge_supply_propose_reservation") && bridgeReadiness.includes("missingInitialBridgeTools"), files.bridgeReadiness, "Initial readiness must require every permanent read/proposal bridge wrapper and no consequential wrapper.");
-check("bridge_readiness_bounded_wait", bridgeReadiness.includes("timeoutMs ?? 1_500") && bridgeReadiness.includes("intervalMs ?? 50") && bridgeReadiness.includes("elapsed >= timeoutMs"), files.bridgeReadiness, "Initial bridge readiness must be bounded rather than hanging Relay boot indefinitely.");
+check("bridge_readiness_bounded_wait", bridgeReadiness.includes("timeoutMs ?? 5_000") && bridgeReadiness.includes("intervalMs ?? 50") && bridgeReadiness.includes("elapsed >= timeoutMs"), files.bridgeReadiness, "Initial bridge readiness must permit a cold four-origin TLS load while remaining bounded.");
 
 const releaseProvenance = content.releaseProvenance ?? "";
 check("release_sha_validator", releaseProvenance.includes("validReleaseSha") && releaseProvenance.includes("assertCompiledReleaseSha") && releaseProvenance.includes("non-zero 40-character Git commit"), files.releaseProvenance, "All browser release checks must share one exact SHA validator.");
