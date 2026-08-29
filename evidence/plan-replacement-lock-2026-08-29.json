@@ -1,0 +1,35 @@
+{
+  "schema": "relay.plan-replacement-lock.v1",
+  "sourceRef": "build/pact-vertical-slice",
+  "executedAt": "2026-08-29T11:15:00Z",
+  "environment": {
+    "node": "v22.16.0",
+    "typescript": "5.8.3"
+  },
+  "commands": [
+    "tsc -p tsconfig.json --noEmit",
+    "node check.mjs"
+  ],
+  "sourceMode": "The exact current authority-guard source was reconstructed from the connected private branch with minimal declaration stubs for its imported modules.",
+  "result": "pass",
+  "checks": {
+    "lockedStatuses": [
+      "AWAITING_APPROVAL",
+      "APPROVED",
+      "COMMITTED"
+    ],
+    "recoverableStatuses": [
+      null,
+      "DRAFT",
+      "VALIDATED",
+      "STALE",
+      "REJECTED"
+    ],
+    "staleRecoveryAllowed": true,
+    "pendingApprovalReplacementBlocked": true,
+    "approvedPlanReplacementBlocked": true,
+    "committedPlanReplacementBlocked": true,
+    "humanAuthorityStillCappedAt": 3000
+  },
+  "boundary": "This proves the pure lock-state and strict TypeScript contract of the authority module. It is not a clean full checkout, browser execution, deployed four-origin test or actual ChatGPT evidence."
+}
