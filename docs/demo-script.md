@@ -12,16 +12,18 @@ Do not add another workflow, provider, explanation section or technical detour.
 
 ## Before recording
 
-1. Deploy four HTTPS origins.
-2. Run `npm run deploy:smoke`.
-3. Complete the actual ChatGPT checklist in `chatgpt-validation.md`.
-4. Open the normal Relay URL, not `?direct=1` and not `?proof=1`.
+1. Run `npm run gate:release -- --env .env.deploy` for the exact commit.
+2. Complete `docs/chatgpt-validation.md` in ChatGPT's built-in browser.
+3. Open the normal Relay URL, not `?direct=1` and not `?proof=1`.
+4. Confirm `relay_get_release_identity` and `relay_diagnose_webmcp` both pass.
 5. Click **Reset scenario**.
 6. Confirm:
    - `WebMCP LIVE`
    - `3/3 PROVIDERS`
-   - each provider shows `signed Relay session`
-   - no proposal or receipt counters are nonzero
+   - each provider shows a signed Relay session
+   - proposal and receipt counters are zero
+   - read and proposal wrappers are visible
+   - consequential commit wrappers are absent
 7. Keep the live capability panel visible.
 8. Hide DevTools and unnecessary browser chrome.
 9. Use one continuous screen recording. Cut only model latency and repetitive tool transitions.
@@ -45,19 +47,19 @@ Hard constraints:
 Use the provider tools and stage the returned proposal IDs with relay_stage_plan using maxBudget 5000. Do not tighten the authority ceiling yourself. Then call relay_request_approval and stop for my decision.
 ```
 
-The initial staged authority must visibly be **€5,000**. If ChatGPT stages the plan with a lower ceiling, reset and rerun the prompt. The human, not the agent, performs the narrowing step.
+The initial staged authority must visibly be **€5,000**. If ChatGPT stages a lower ceiling, reset. The human performs the narrowing step.
 
 ## 0:00–0:12 — Hook
 
 **Shot**
 
-Relay Command with all three provider websites and the live capability surface visible.
+Relay Command, three provider websites and the live capability surface.
 
 **Narration**
 
 > “This agent can coordinate a 42-person evacuation across three independent websites. It can prepare everything. It cannot reserve one bed, vehicle or supply kit until the human approves the exact transaction.”
 
-Briefly show the four HTTPS origins.
+Briefly show the four HTTPS origins and the release identity pass.
 
 ## 0:12–0:27 — Human objective
 
@@ -82,37 +84,33 @@ relay_bridge_supply_check_stock
 Then six non-binding proposals:
 
 ```text
-East Shelter          18 beds
-South Shelter         24 beds
-Rapid Bus 32          32 seats
-Access Shuttle 10     10 accessible seats
-Evacuation Kits       42 kits
-Mobility Medical Kits 9 kits
+East Shelter           18 beds
+South Shelter          24 beds
+Rapid Bus 32           32 seats
+Access Shuttle 10      10 accessible seats
+Evacuation Kits        42 kits
+Mobility Medical Kits   9 kits
 ```
 
-Then:
-
-```text
-relay_stage_plan
-```
+Then `relay_stage_plan`.
 
 **Visual proof**
 
-- provider proposal counters rise
-- exact provider origins and versions appear in Relay
+- proposal counters rise
+- exact provider origins and versions appear
 - seven deterministic checks pass
 - total cost is €2,733
 - staged authority is €5,000
 - `relay_request_approval` appears
-- provider commit wrappers are visible but require signed authority
+- all top-level provider commit wrappers remain absent
 
 **Narration**
 
-> “These are quotes, not commitments. Relay rejects plans that merely sound right but fail a hard constraint.”
+> “These are quotes, not commitments. Even though the providers can prepare commit implementations, ChatGPT receives no consequential commit capability before consent.”
 
 ## 0:54–1:05 — Human narrows authority
 
-Change the authority ceiling from:
+Change:
 
 ```text
 €5,000 → €3,000
@@ -124,32 +122,28 @@ Change the authority ceiling from:
 
 ## 1:05–1:22 — Consent becomes an execution dependency
 
-Let ChatGPT call:
+Let ChatGPT call `relay_request_approval`.
 
-```text
-relay_request_approval
-```
+The approval sheet opens while the tool call remains pending.
 
-The approval sheet opens while the ChatGPT tool call remains pending.
-
-Hold for two seconds on:
+Hold briefly on:
 
 - exact operations
 - provider origins
 - state versions
 - costs
 - plan digest
-- two-minute expiry
+- expiry
 
 **Narration**
 
-> “The agent is now paused inside the tool call. No approval token exists until this human decides.”
+> “The agent is paused inside the tool call. No approval token and no commit capability exist until this human decides.”
 
 ## 1:22–1:39 — The unforgettable failure
 
 Do not approve.
 
-Click the red consent-sheet control:
+Click:
 
 ```text
 Change shelter capacity
@@ -158,16 +152,17 @@ Change shelter capacity
 **Visual proof**
 
 - South Shelter falls from 24 to 12
-- Shelter Grid advances from v1 to v2
+- Shelter Grid advances v1 → v2
 - stale shelter proposals disappear
-- shelter commit wrapper disappears
 - `relay_request_approval` disappears
+- commit wrappers remain absent
 - plan turns red and `STALE`
-- the suspended ChatGPT call resolves with stale-plan failure
+- the suspended ChatGPT call resolves with a stale-plan failure
+- the €3,000 human ceiling remains in force
 
 **Narration**
 
-> “The plan was valid one second ago. It is invalid now. Relay revokes the capability instead of executing stale work.”
+> “The plan was valid one second ago. It is invalid now. Relay revokes authority instead of executing stale work.”
 
 Do not cut this moment too quickly.
 
@@ -179,7 +174,7 @@ Ask ChatGPT:
 Recover the stale Relay plan. Re-query and replace only the invalid Shelter Grid proposals. Reuse Transit Ops and Supply Hub proposals only if their provider state versions remain current. Restage with the human-amended €3,000 ceiling, then request exact approval again.
 ```
 
-Expected new shelter work:
+Expected replacement shelter work:
 
 ```text
 East Shelter   18 beds
@@ -193,17 +188,15 @@ Recovered total:
 €2,793
 ```
 
-North Shelter retains 34 beds.
-
 **Narration**
 
-> “The agent can recover by composing new valid work. It cannot force the obsolete plan through.”
+> “The agent can recover by composing new valid work. It cannot restore the obsolete plan or the old €5,000 authority.”
 
-## 1:58–2:17 — Exact human approval
+## 1:58–2:17 — Exact human approval creates capability
 
 The approval sheet reopens.
 
-Show the changed Shelter Grid version, recovered operations and retained €3,000 authority ceiling.
+Show the changed Shelter Grid version, recovered operations and retained €3,000 ceiling.
 
 Click:
 
@@ -211,9 +204,11 @@ Click:
 Approve & sign PACT token
 ```
 
+Immediately show the capability panel changing from no consequential commit capability to exactly three provider commit wrappers.
+
 **Narration**
 
-> “This is not permission to complete the objective by any means. It authorizes these exact operations, at these exact origins and versions, for two minutes.”
+> “This is not permission to complete the objective by any means. It authorizes these exact operations, origins, versions and costs for a limited time.”
 
 ## 2:17–2:36 — Independent provider verification
 
@@ -227,9 +222,9 @@ relay_bridge_supply_commit_reservation
 
 Show:
 
-- each provider inventory changes only after its own verification
+- each provider changes inventory only after its own verification
 - provider versions advance
-- commit wrappers disappear after use
+- each commit wrapper disappears after its provider batch closes
 - six receipts enter Relay
 - plan reaches `COMMITTED`
 
@@ -237,20 +232,18 @@ Show:
 
 > “Each website verifies the human authorization independently. No provider is asked to trust the agent.”
 
-## 2:36–2:45 — Receipts, digest, thesis
+## 2:36–2:45 — Receipts, exact closure, thesis
 
-Call or display the result of:
-
-```text
-relay_get_audit_bundle
-```
+Call or display `relay_get_audit_bundle`.
 
 Show:
 
-- `COMMITTED`
+- `relay.audit.v2`
+- release identity pass
+- exact scope and receipt closure pass
 - six receipts
 - final SHA-256 digest
-- PACT rail
+- `COMMITTED`
 
 **Narration**
 
@@ -265,23 +258,25 @@ Propose → Amend → Consent → Transact
 
 ## Mandatory visible evidence
 
-The final cut must visibly contain:
+The final cut must contain:
 
 - four distinct HTTPS origins
+- exact release identity pass
 - three independent provider websites
 - six initial non-binding proposals
 - €2,733 initial plan cost
 - €5,000 initial authority ceiling
+- top-level commit wrappers absent before consent
 - human amendment from €5,000 to €3,000
 - suspended approval call
 - Shelter Grid v1 → v2
-- stale plan state
-- capability disappearance
+- stale plan state and capability teardown
 - recovered €2,793 plan under the retained €3,000 ceiling
 - exact approval sheet
+- exactly three commit wrappers appearing after consent
 - three independent provider commit calls
 - six receipts
-- final audit digest
+- audit bundle v2 digest
 - final `COMMITTED` state
 
 ## Editing rules
@@ -305,14 +300,19 @@ Forbidden:
 
 ## Rehearsal gate
 
-Before recording the final video:
+Before recording:
 
-- [ ] initial plan stages with a visible €5,000 authority ceiling
+- [ ] full deployment gate passes for the exact SHA
+- [ ] release identity and initial diagnostic pass
+- [ ] initial plan stages at €5,000
 - [ ] human visibly changes €5,000 to €3,000
-- [ ] successful path completed three consecutive times
-- [ ] stale/recovery path completed three consecutive times
+- [ ] commit wrappers are absent before approval
+- [ ] stale/recovery path completes three consecutive times
+- [ ] canonical commit path completes three consecutive times
+- [ ] approval creates exactly three commit wrappers
 - [ ] reset returns all providers to v1 and zero proposals/receipts
-- [ ] total initial runtime is 2:40–2:50 after cuts
+- [ ] final audit bundle v2 passes
+- [ ] runtime is 2:40–2:50 after cuts
 - [ ] capability creation and teardown are legible at normal playback speed
 - [ ] no hidden click is required outside Relay and ChatGPT
 - [ ] no browser console error occurs
