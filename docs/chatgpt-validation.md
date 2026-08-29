@@ -4,78 +4,69 @@ Status: **required external release gate**
 
 Harness evidence is useful but does not satisfy this gate. The decisive run must happen in ChatGPT's supported built-in browser against four real HTTPS origins.
 
-## 0. Mandatory origin-isolation gate
+## 0. Prerequisite release gate
 
-WebMCP tool registration and discovery require an origin-keyed agent cluster. Every Relay response must include:
+Do not begin until this command returns `"pass": true`:
+
+```bash
+npm run gate:release -- --env .env.deploy
+```
+
+The deployment must prove all four origins serve:
 
 ```http
 Origin-Agent-Cluster: ?1
+X-Relay-Release: <exact git commit>
 ```
 
-Before opening ChatGPT, run:
+and a valid `/release.json` for the same commit.
 
-```bash
-npm run check:origin-isolation
-npm run deploy:smoke
-```
+After any origin-isolation correction, open Relay in a **fresh ChatGPT browser context**. A refresh of a context that previously loaded the origin is not sufficient because agent-cluster assignment is sticky within the browsing-context group.
 
-The deployment smoke must pass `origin_agent_cluster_header` for:
+## 1. Evidence boundary
+
+Use ignored machine evidence while validating:
 
 ```text
-Relay Command
-Shelter Grid
-Transit Ops
-Supply Hub
+.relay-artifacts/chatgpt/01-release-identity.json
+.relay-artifacts/chatgpt/02-initial-diagnostic.json
+.relay-artifacts/chatgpt/03-provider-proposal-probes.json
+.relay-artifacts/chatgpt/04-pre-consent-surface.json
+.relay-artifacts/chatgpt/05-stale-teardown.json
+.relay-artifacts/chatgpt/06-approved-surface.json
+.relay-artifacts/chatgpt/07-full-path.json
+.relay-artifacts/chatgpt/08-final-audit-bundle.json
+.relay-artifacts/chatgpt/09-partial-commit-recovery.json
 ```
 
-After adding or correcting the header, open Relay in a **fresh ChatGPT browser context**. Do not trust a simple refresh of a context that previously loaded the origin without the header.
+Do not commit runtime evidence after deploying a SHA unless the resulting new commit is rebuilt, redeployed and revalidated.
 
-See [`webmcp-origin-isolation.md`](webmcp-origin-isolation.md).
+Record:
 
-## 1. Why Relay uses a fixed top-level bridge
+- deployed Relay URL
+- exact `git rev-parse HEAD`
+- date and visible ChatGPT build when available
+- that the caller was ChatGPT's built-in browser
+- normal fixed-bridge mode or `?direct=1`
+
+Ordinary Chrome, Playwright and `?proof=1` remain harness evidence only.
+
+## 2. Why Relay uses a fixed top-level bridge
 
 ChatGPT may not expose tools supplied only by embedded provider documents directly to the agent client.
 
-Relay preserves the three providers as independent WebMCP documents, then Relay Command:
+Relay preserves the providers as independent WebMCP documents, then Relay Command:
 
 1. discovers an exact provider capability with `getTools({ fromOrigins })`
-2. registers a fixed top-level wrapper for one exact origin and tool name
-3. invokes the underlying provider tool through `executeTool()`
-4. removes the wrapper when the provider capability expires, commits or becomes stale
+2. registers a fixed wrapper for one exact origin and tool name
+3. invokes only that underlying provider tool through `executeTool()`
+4. removes the wrapper when the capability or human authority is no longer valid
 
-There is no generic origin parameter, tool-name parameter or unrestricted execute-any capability. Provider-side PACT verification remains authoritative.
+There is no generic origin parameter, arbitrary tool-name parameter or execute-any capability. Provider-side PACT verification remains authoritative.
 
-Use the normal Relay URL for the primary validation. `?direct=1` exists only to diagnose direct descendant support.
+Use the normal Relay URL for primary validation. `?direct=1` exists only to diagnose direct descendant support.
 
-## 2. Required deployment inputs
-
-```text
-RELAY_HOST=
-SHELTER_HOST=
-TRANSIT_HOST=
-SUPPLY_HOST=
-ACME_EMAIL=
-```
-
-All four DNS records must resolve to the Caddy deployment host.
-
-```bash
-cp .env.deploy.example .env.deploy
-# populate every value
-
-npm run deploy:check
-npm run deploy:check:dns
-
-docker compose --env-file .env.deploy build --pull
-docker compose --env-file .env.deploy up -d
-docker compose --env-file .env.deploy ps
-
-npm run deploy:smoke
-```
-
-Do not begin ChatGPT validation until every deployed smoke probe passes.
-
-## 3. Open Relay in ChatGPT
+## 3. Open Relay
 
 Open:
 
@@ -83,7 +74,7 @@ Open:
 https://<RELAY_HOST>
 ```
 
-Confirm the visible UI shows:
+Confirm the visible UI reaches:
 
 ```text
 WebMCP LIVE
@@ -91,9 +82,53 @@ WebMCP LIVE
 signed Relay session on each provider
 ```
 
-## 4. Machine-readable compatibility diagnostic
+The app deliberately waits for the initial fixed read/proposal bridge surface before registering diagnostics. A warning in the console means the initial provider surface did not stabilize within the bounded readiness window and must be investigated before continuing.
 
-Send this exact instruction:
+## 4. Prove exact deployed release identity
+
+Send:
+
+```text
+On the open Relay page, call relay_get_release_identity.
+Return the raw tool result JSON without summarizing it.
+```
+
+Required shape:
+
+```json
+{
+  "ok": true,
+  "schema": "relay.release-identity.v1",
+  "app": "relay-command",
+  "compiledSha": "<40-character commit>",
+  "edgeSha": "<same commit>",
+  "manifest": {
+    "schema": "relay.release.v1",
+    "app": "relay-command",
+    "sha": "<same commit>"
+  },
+  "checks": {
+    "responseOk": true,
+    "compiledShaValid": true,
+    "edgeShaValid": true,
+    "manifestValid": true,
+    "allLayersConsistent": true
+  },
+  "manifestError": null
+}
+```
+
+The SHA must equal:
+
+```bash
+git rev-parse HEAD
+```
+
+Save the raw output as `01-release-identity.json`.
+
+## 5. Machine-readable compatibility diagnostic
+
+Send:
 
 ```text
 On the open Relay page, call relay_diagnose_webmcp with:
@@ -108,6 +143,14 @@ Required fields:
 {
   "ok": true,
   "compatibilityMode": "fixed-top-level-bridge-active",
+  "provenance": {
+    "required": true,
+    "compiledReleaseSha": "<exact commit>",
+    "provenancePass": true,
+    "releaseIdentity": {
+      "ok": true
+    }
+  },
   "environment": {
     "secureContext": true,
     "originAgentClusterSupported": true,
@@ -148,19 +191,13 @@ Every provider entry must contain:
 }
 ```
 
-A tool that is merely listed does not pass. Null output, invalid JSON, an exception or semantic `{ "ok": false }` fails the gate.
+A listed tool is not enough. Null output, invalid JSON, an exception or semantic `{ "ok": false }` fails the gate.
 
-Save the raw output as:
+Save the raw output as `02-initial-diagnostic.json`.
 
-```text
-evidence/chatgpt/01-initial-diagnostic.json
-```
+## 6. Prove one real proposal per provider
 
-Record that the caller was ChatGPT's built-in browser. Do not relabel ordinary Chrome output as ChatGPT evidence.
-
-## 5. Prove one real discovery and proposal per provider
-
-Use only the fixed top-level bridge tools:
+Use only the fixed top-level read and proposal tools:
 
 ```text
 relay_bridge_shelter_find_capacity
@@ -200,28 +237,16 @@ relay_bridge_supply_propose_reservation
 }
 ```
 
-Each result must include:
+Each result must include `ok: true`, an exact provider origin and a proposal ID.
 
-```json
-{
-  "ok": true,
-  "proposal": {
-    "proposalId": "...",
-    "providerOrigin": "https://<EXPECTED_PROVIDER_HOST>",
-    "stateVersion": 1
-  }
-}
-```
+Important distinction:
 
-Save all raw results as:
+- provider-side commit implementations may become live after proposals exist
+- top-level `relay_bridge_*_commit_reservation` wrappers must remain absent until the exact Relay plan is human-approved
 
-```text
-evidence/chatgpt/02-provider-proposal-probes.json
-```
+Save the raw calls as `03-provider-proposal-probes.json`, then click **Reset scenario** before the full run.
 
-Click **Reset scenario** before the full run.
-
-## 6. Canonical evacuation prompt
+## 7. Canonical evacuation prompt
 
 Send exactly:
 
@@ -245,42 +270,35 @@ Use the provider tools and stage the returned proposal IDs with relay_stage_plan
 Expected initial plan:
 
 ```text
-East Shelter          18 beds                 €180
-South Shelter         24 beds                 €216
-Rapid Bus 32          32 seats                €928
-Access Shuttle 10     10 accessible seats     €680
-Evacuation Kits       42 kits                 €504
-Mobility Medical Kits  9 kits                 €225
-Total                                         €2,733
-Initial authority ceiling                       €5,000
+East Shelter           18 beds                 €180
+South Shelter          24 beds                 €216
+Rapid Bus 32           32 seats                €928
+Access Shuttle 10      10 accessible seats     €680
+Evacuation Kits        42 kits                 €504
+Mobility Medical Kits   9 kits                 €225
+Total                                          €2,733
+Initial authority ceiling                        €5,000
 ```
 
-If `relay_get_plan` shows a ceiling below €5,000 before the human amendment, the run fails. Reset and repeat. The human, not the agent, must perform the narrowing step.
+If `relay_get_plan` shows a ceiling below €5,000 before the human amendment, reset. The human, not the agent, must perform the narrowing step.
 
-## 7. Prove dynamic capability creation
+## 8. Prove the pre-consent surface
 
-Capture `relay_diagnose_webmcp`:
+Call `relay_diagnose_webmcp` after proposals and again after valid plan staging.
 
-1. before proposals
-2. after provider proposals
-3. after valid plan staging
+Required:
 
-Required changes:
-
-- each provider commit wrapper appears only after that provider has a live proposal
+- all read and proposal wrappers remain visible
 - `relay_request_approval` appears only after the plan validates
+- all three top-level commit wrappers remain absent while status is `VALIDATED` or `AWAITING_APPROVAL`
 - `toolchange.observedEventCount` increases
-- runtime and client-visible tool lists reflect the same state
+- runtime and client-visible tool lists agree
 
-Save:
+Save as `04-pre-consent-surface.json`.
 
-```text
-evidence/chatgpt/03-capability-created.json
-```
+## 9. Human amendment and stale-state proof
 
-## 8. Human amendment and stale-state proof
-
-Change the authority ceiling from:
+In the visible Relay UI, change the authority ceiling:
 
 ```text
 €5,000 → €3,000
@@ -296,7 +314,7 @@ status: VALIDATED
 
 Only then let ChatGPT call `relay_request_approval`.
 
-While the call is suspended, click:
+While the approval call is suspended, click:
 
 ```text
 Change shelter capacity
@@ -309,23 +327,21 @@ Required result:
 - old Shelter Grid proposals are deleted
 - the plan becomes `STALE`
 - the pending approval call resolves with a stale-plan failure
-- the Shelter Grid commit wrapper disappears
 - `relay_request_approval` disappears
+- top-level commit wrappers remain absent
 - no provider capacity was committed by the stale plan
+- the human authority ceiling remains €3,000
 
 Call the diagnostic again. Required:
 
-- higher `toolchange.observedEventCount`
+- a higher `toolchange.observedEventCount`
 - stale capabilities absent from runtime and client-visible lists
 - `environment.originIsolationPass` remains true
+- `provenance.provenancePass` remains true
 
-Save:
+Save as `05-stale-teardown.json`.
 
-```text
-evidence/chatgpt/04-capability-torn-down.json
-```
-
-## 9. Recover only invalidated work
+## 10. Recover only invalidated work
 
 Send:
 
@@ -347,19 +363,41 @@ Expected recovered total:
 €2,793
 ```
 
-North Shelter must retain 34 beds before and after its committed 12-bed allocation is represented in the final policy evaluation. The committed reservation must not be subtracted twice.
+Call `relay_get_plan` and confirm the recovered plan still has `maxBudget: 3000`.
 
-## 10. Approve and commit
+## 11. Approve and prove consequential capability creation
 
-Approve the exact consent sheet.
+Approve the exact recovered consent sheet.
 
-ChatGPT then calls the complete same-origin batches:
+Immediately call `relay_diagnose_webmcp`.
+
+Required:
+
+- plan status is `APPROVED`
+- exactly these top-level consequential wrappers are now visible:
 
 ```text
 relay_bridge_shelter_commit_reservation
 relay_bridge_transit_commit_reservation
 relay_bridge_supply_commit_reservation
 ```
+
+- no generic commit or execute-any capability exists
+- the wrappers are bound to exact provider origins and tool names
+
+Save as `06-approved-surface.json`.
+
+## 12. Commit the exact provider batches
+
+ChatGPT calls:
+
+```text
+relay_bridge_shelter_commit_reservation
+relay_bridge_transit_commit_reservation
+relay_bridge_supply_commit_reservation
+```
+
+Each provider must receive its complete approved same-origin proposal batch and the exact PACT approval token.
 
 Required final state:
 
@@ -369,13 +407,9 @@ COMMITTED
 all provider commit wrappers removed
 ```
 
-Save the raw tool sequence and final `relay_get_plan` output as:
+Save the complete raw sequence and final `relay_get_plan` output as `07-full-path.json`.
 
-```text
-evidence/chatgpt/05-full-path.json
-```
-
-## 11. Final audit bundle
+## 13. Final audit bundle v2
 
 Send:
 
@@ -391,15 +425,21 @@ Required output:
   "algorithm": "SHA-256",
   "digest": "<base64url digest>",
   "bundle": {
-    "schema": "relay.audit.v1",
-    "approvals": "<provider-accepted signed PACT capsules>",
+    "schema": "relay.audit.v2",
+    "releaseIdentity": {
+      "ok": true
+    },
     "consistency": {
       "planStatus": "COMMITTED",
-      "allReceiptsApproved": true,
+      "approvalScopeCoverageExact": true,
+      "approvalScopesMatchPlan": true,
+      "approvalAuthorityMatchesPlan": true,
+      "receiptCoverageExact": true,
+      "receiptsMatchPlan": true,
+      "planTotalMatchesProposals": true,
+      "receiptTotalMatchesPlan": true,
       "pass": true
-    },
-    "plan": "<final plan and receipts>",
-    "mesh": "<final provider state>"
+    }
   }
 }
 ```
@@ -407,32 +447,31 @@ Required output:
 Any of these fail the release gate:
 
 ```text
+AUDIT_RELEASE_IDENTITY_FAILED
 APPROVAL_EVIDENCE_MISSING
 AUDIT_STATE_INCONSISTENT
 AUDIT_CAPTURE_UNAVAILABLE
 ```
 
-Save:
+Save as `08-final-audit-bundle.json`.
 
-```text
-evidence/chatgpt/06-final-audit-bundle.json
-```
-
-## 12. Partial cross-provider commitment drill
+## 14. Partial cross-provider commitment drill
 
 Run separately after resetting the scenario.
 
 1. Build the canonical plan at €5,000 authority.
 2. Human narrows authority to €3,000.
 3. Approve the amended plan.
-4. Commit Shelter Grid successfully.
-5. Call `relay_get_plan`.
-6. Required intermediate state:
+4. Confirm all three commit wrappers appear.
+5. Commit Shelter Grid successfully.
+6. Call `relay_get_plan`.
+7. Required intermediate state:
    - status `APPROVED`, not `COMMITTED`
    - only Shelter Grid receipts present
-   - Transit Ops and Supply Hub pending
-7. Intentionally submit only one of the two approved Transit Ops proposal IDs.
-8. Required result:
+   - Shelter Grid commit wrapper removed
+   - Transit Ops and Supply Hub commit wrappers still available while approval remains live
+8. Intentionally submit only one of the two approved Transit Ops proposal IDs.
+9. Required result:
 
 ```json
 {
@@ -441,36 +480,17 @@ Run separately after resetting the scenario.
 }
 ```
 
-9. Re-query Transit Ops. Its capacity and version must be unchanged.
-10. Call `relay_get_audit_bundle`. It must return:
+10. Re-query Transit Ops. Its capacity and version must be unchanged.
+11. Call `relay_get_audit_bundle`. It must return `AUDIT_STATE_INCONSISTENT` with `committed: false` and `pass: false`.
+12. Retry Transit Ops with both approved proposal IDs while the exact approval remains live.
+13. Commit Supply Hub.
+14. Final audit must return `ok: true`.
 
-```json
-{
-  "ok": false,
-  "code": "AUDIT_STATE_INCONSISTENT",
-  "bundle": {
-    "consistency": {
-      "planStatus": "APPROVED",
-      "committed": false,
-      "pass": false
-    }
-  }
-}
-```
-
-11. Retry Transit Ops with both approved proposal IDs while the token is still live.
-12. Commit Supply Hub.
-13. Final audit must return `ok: true`.
-
-Save:
-
-```text
-evidence/chatgpt/07-partial-commit-recovery.json
-```
+Save as `09-partial-commit-recovery.json`.
 
 Expired or stale authority requires a fresh plan and fresh human approval.
 
-## 13. Direct-descendant diagnostic only
+## 15. Direct-descendant diagnostic only
 
 Open:
 
@@ -480,34 +500,37 @@ https://<RELAY_HOST>/?direct=1
 
 Call `relay_diagnose_webmcp`.
 
-This records whether that ChatGPT build directly exposes descendant provider tools. It is not the primary submission path and does not replace fixed-bridge evidence.
+This records whether that ChatGPT build directly exposes descendant provider tools. It is not the primary path and does not replace fixed-bridge evidence.
 
-## 14. Final pass checklist
+## 16. Final pass checklist
 
+- [ ] Full deployment gate passed for the exact SHA
 - [ ] Four distinct HTTPS origins
-- [ ] `Origin-Agent-Cluster: ?1` on all four root responses
-- [ ] Fresh ChatGPT browser context used after header deployment
+- [ ] `Origin-Agent-Cluster: ?1` on all four roots
+- [ ] `X-Relay-Release` and `/release.json` match the compiled SHA
+- [ ] Fresh ChatGPT browser context used
+- [ ] `relay_get_release_identity.ok === true`
+- [ ] `provenance.provenancePass === true`
 - [ ] `environment.originIsolationPass === true`
 - [ ] Relay permanent tools runtime-registered and client-visible
 - [ ] All three provider origins discovered
 - [ ] All three read probes return semantic success
 - [ ] One real proposal succeeds against every provider
-- [ ] Commit wrappers appear dynamically
+- [ ] Top-level commit wrappers are absent before consent
 - [ ] Initial plan stages with a €5,000 authority ceiling
 - [ ] Human visibly narrows authority from €5,000 to €3,000
-- [ ] Amended plan revision increments and remains `VALIDATED`
 - [ ] Approval call visibly suspends
-- [ ] Shelter state change invalidates stale authority
-- [ ] Stale approval and commit capabilities disappear
+- [ ] Shelter state change invalidates the plan
+- [ ] Stale authority and approval capability disappear
 - [ ] Recovery replaces only stale provider work
 - [ ] Recovered plan retains the €3,000 human ceiling
-- [ ] Human approves exact recovered scopes
+- [ ] Exact approval creates only the three provider commit wrappers
 - [ ] Providers independently verify and commit
 - [ ] Six unique receipts reach Relay
-- [ ] Final audit digest passes consistency
+- [ ] Final audit bundle v2 passes exact closure
 - [ ] Partial completion is represented honestly and recovered
 - [ ] Raw evidence identifies ChatGPT as the client
 
-## 15. Verdict
+## 17. Verdict
 
 Do not merge PR #1 until every checkbox passes against the deployed HTTPS mesh.
