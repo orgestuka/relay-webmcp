@@ -1,0 +1,31 @@
+{
+  "schema": "relay.deploy-preflight-provenance-harness.v1",
+  "sourceCommit": "c5e836c67180e3589a397d988e118d1dc3b718a6",
+  "executedAt": "2026-08-29T11:43:31Z",
+  "environment": {
+    "node": "v22.16.0",
+    "mode": "isolated temporary Git repository with ignored deployment environment"
+  },
+  "result": "pass",
+  "cases": {
+    "cleanExactCheckout": {
+      "pass": true,
+      "releaseSha": "c8269328fac08e50f0b5594ecdbc1ad6485379d7",
+      "currentGitSha": "c8269328fac08e50f0b5594ecdbc1ad6485379d7",
+      "cleanCheckout": true,
+      "preflightAccepted": true
+    },
+    "dirtyTrackedCheckout": {
+      "pass": true,
+      "preflightRejected": true,
+      "blocker": "Deployment preflight requires a clean Git checkout."
+    },
+    "mismatchedReleaseSha": {
+      "pass": true,
+      "preflightRejected": true,
+      "blocker": "RELAY_RELEASE_SHA does not match git rev-parse HEAD for this checkout."
+    }
+  },
+  "invariant": "A deployment cannot pass preflight unless RELAY_RELEASE_SHA is the exact HEAD of a clean Git checkout.",
+  "boundary": "This is deterministic preflight logic evidence in an isolated local repository. It does not prove public DNS, Docker, Caddy, deployed certificates or actual ChatGPT execution."
+}
