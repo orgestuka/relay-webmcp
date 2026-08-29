@@ -11,6 +11,7 @@
     Referrer-Policy "no-referrer"
     Origin-Agent-Cluster "?1"
     Strict-Transport-Security "max-age=31536000"
+    X-Relay-Release {$RELAY_RELEASE_SHA}
   }
 }
 
