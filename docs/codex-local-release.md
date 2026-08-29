@@ -21,22 +21,26 @@ git rev-parse HEAD
 
 Stop if the worktree is not clean.
 
-## 2. Use the required toolchain
+## 2. Use the exact required toolchain
+
+The repository pins Node in `.nvmrc` and npm in `package.json`:
 
 ```bash
-nvm install 22
-nvm use 22
+nvm install
+nvm use
 npm install --global npm@10.9.2 --no-audit --no-fund
 node --version
 npm --version
 ```
 
-Required:
+Required exactly:
 
 ```text
-Node 22.x
+Node v22.16.0
 npm 10.9.2
 ```
+
+Do not generate the decisive lockfile under another Node or npm patch. The source gate, CI and Docker image enforce the same versions.
 
 ## 3. Generate the lockfile once
 
@@ -85,7 +89,7 @@ This gate independently proves:
 correct branch
 clean tree before and after
 exact 40-character Git head
-Node 22
+Node 22.16.0
 npm 10.9.2
 committed lockfileVersion >= 3
 syntax of every release script
