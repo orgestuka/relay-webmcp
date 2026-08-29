@@ -42,22 +42,22 @@ Relay keeps websites relevant as visible state, trust and execution boundaries. 
 
 ## How it works
 
-The objective is to evacuate 42 Riverside residents before 18:00 while:
+The incident objective is to evacuate 42 Riverside residents before 18:00 while:
 
 - sheltering all 42 residents
 - transporting all 42 residents
 - providing at least 9 wheelchair-accessible positions
 - preserving 20 North Shelter beds
 - providing evacuation and mobility medical kits
-- remaining below a €3,000 human authority ceiling
+- remaining below the incident's €5,000 budget
 
-The initial plan uses six exact non-binding proposals and costs €2,733.
+The agent stages six exact non-binding proposals costing €2,733 under the initial €5,000 ceiling.
 
-The human narrows the authority ceiling, then the agent calls `relay_request_approval`. The tool call remains suspended while the consent sheet is visible.
+Before consent, the human deliberately narrows the agent's authority from €5,000 to €3,000. Only then does the agent call `relay_request_approval`. The tool call remains suspended while the consent sheet is visible.
 
 Before approval, Shelter Grid loses capacity. Its state version advances, old shelter proposals become invalid and the affected approval and commit capabilities disappear.
 
-The agent recovers with fresh shelter proposals, the human approves the revised exact scopes and all three providers independently verify and commit. Relay records six origin-bound receipts and emits a final audit digest.
+The agent recovers with fresh shelter proposals while preserving the human-amended €3,000 ceiling. The human approves the revised exact scopes and all three providers independently verify and commit. Relay records six origin-bound receipts and emits a final audit digest.
 
 ## Why WebMCP materially improves the experience
 
@@ -189,6 +189,8 @@ TypeScript, Vite, WebMCP, Web Crypto API, ECDSA P-256, Vitest, cross-origin ifra
 - [ ] clean checkout passes `npm run verify`
 - [ ] four HTTPS origins pass `npm run deploy:smoke`
 - [ ] raw actual ChatGPT diagnostic passes
+- [ ] initial plan visibly stages at €5,000 authority
+- [ ] human visibly narrows authority to €3,000
 - [ ] full stale/recovery/commit path passes in ChatGPT
 - [ ] final audit bundle captured
 - [ ] 2:40–2:50 demo rehearsed repeatedly
