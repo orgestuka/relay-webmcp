@@ -120,7 +120,11 @@ export function installAuthorityGuard(): void {
     const input = authorityInput();
     if (!input) return;
 
-    const requested = Number(input.value);
+    // Command App deliberately normalizes amendment input to a whole euro.
+    // Mirror that exact behavior so the durable authority state cannot diverge.
+    const requested = Math.floor(Number(input.value));
+    input.value = Number.isFinite(requested) ? String(requested) : input.value;
+
     const renderedPlanMaximum = Number(input.dataset.planMaximum);
     const maximum = Number.isFinite(renderedPlanMaximum)
       ? Math.min(renderedPlanMaximum, authority.maximum)
