@@ -1,242 +1,269 @@
 # Submission readiness
 
-## Authoritative checkpoint
+Status date: **2026-08-29**
 
-```text
-branch:          build/pact-vertical-slice
-release source:  5622bf6e411792e0cf336f9ce3c558c7be226381
-base:            main @ d89fbadceb4bed68d4745a3dbc25397c4e764796
-PR:              #1, open and draft
-```
+Branch: `build/pact-vertical-slice`
 
-Later commits may update only evidence or release documentation. Use `git rev-parse HEAD` as the final checkout SHA and preserve the full history.
+Integration path: **draft PR #1 only**
 
-`main` stays frozen until every external gate passes.
+`main` must remain frozen until every external gate is green.
+
+# Current recommendation
+
+## **DO NOT MERGE**
+
+The internal protocol and release hardening are materially stronger, but the decisive environment gates remain unproven:
+
+- clean full-checkout verification
+- production container build
+- four real HTTPS origins
+- deployed origin-isolation smoke
+- actual ChatGPT built-in-browser tool discovery and execution
+- full stale → recover → approve → commit rehearsal
+- public video
 
 ## Status vocabulary
 
 | Status | Meaning |
 | --- | --- |
-| **PASS** | The exact gate ran and evidence was captured. |
-| **PARTIAL** | A lower-level property passed, but the release-level path remains unproven. |
-| **BLOCKED** | Required external input or environment is absent. |
+| **PASS** | The exact gate ran and machine-readable evidence exists. |
+| **PARTIAL** | A lower-level invariant passed, but the complete release gate did not run. |
+| **BLOCKED** | Required credentials, hostnames or environment access are absent. |
+| **NOT RUN** | The gate is runnable later but has not been executed. |
 | **FAIL** | The exact gate ran and failed. |
-| **NOT RUN** | The gate can run but has not run yet. |
 
-## Evidence vocabulary
+## Evidence classes
 
-| Source | Meaning |
+| Evidence class | Meaning |
 | --- | --- |
-| `LOCAL_RECONSTRUCTED_CORE` | Current source reconstructed from the private branch and executed locally. Not a clean full checkout. |
-| `LOCAL_INTERFACE_TYPECHECK` | Exact release modules typechecked with TypeScript 5.8. Not a Vite production build. |
-| `LOCAL_SOURCE_GATE` | Dependency-free source invariant executed against the release configuration. |
-| `LOCAL_DIAGNOSTIC_RUNTIME` | Diagnostic logic executed against deterministic WebMCP doubles. Not a deployed browser. |
-| `LOCAL_BRIDGE_HARNESS` | Fixed bridge executed against an origin-aware ModelContext double. Not actual ChatGPT. |
+| `LOCAL_RECONSTRUCTED_CORE` | Current source modules were reconstructed from the connected private branch and executed locally. Not a full checkout. |
 | `REPOSITORY_CODE_REVIEW` | Static inspection only. |
-| `GITHUB_ACTIONS_INFRA_FAILURE` | GitHub allocated no runner and executed zero steps. Not code evidence. |
-| `DEPLOYED_FOUR_ORIGIN` | Evidence produced against four real HTTPS origins. |
-| `ACTUAL_CHATGPT` | Raw output from ChatGPT's supported built-in browser. Required for compatibility claims. |
+| `GITHUB_ACTIONS_INFRA_FAILURE` | GitHub created a failed job with zero steps and no logs. This is not code evidence. |
+| `CLEAN_CHECKOUT` | Fresh clone, dependency install, verification and production builds. |
+| `DEPLOYED_FOUR_ORIGIN` | Evidence from four real HTTPS origins. |
+| `ACTUAL_CHATGPT` | Raw evidence produced by ChatGPT's supported built-in browser. |
+| `HARNESS` | Playwright, ordinary Chrome or Relay proof-runner evidence. Useful but insufficient for ChatGPT compatibility. |
 
-## Executive release gate
+# Release sequence
 
 ```text
 clean checkout passes
-→ four HTTPS origins pass origin-isolation smoke
-→ actual ChatGPT compatibility passes
-→ stale/recovery/commit path passes
-→ partial-commit recovery passes
-→ demo rehearsed repeatedly
-→ video recorded
-→ public repository requirement satisfied
+→ production container build passes
+→ deployed four-origin smoke passes
+→ actual ChatGPT browser test passes
+→ complete demo rehearsed repeatedly
+→ final video recorded
+→ README and reproduction guide frozen
+→ repository visibility requirement satisfied
 → PR #1 merged
 → submission tag created
 ```
 
-# Current recommendation: **DO NOT MERGE**
+# Internal release audit
 
-The code is at the external-proof boundary. Hostnames, deployment access and actual ChatGPT evidence remain absent.
+| Gate | Status | Exact command or action | Evidence location | Evidence class | Remaining blocker |
+| --- | --- | --- | --- | --- | --- |
+| PACT signature and exact-scope verification | **PASS** | `node --experimental-strip-types scripts/integrity-smoke.ts` | `evidence/local-core-smoke-2026-08-29.json` | `LOCAL_RECONSTRUCTED_CORE` | Repeat from clean checkout. |
+| Canonical €2,733 policy plan | **PASS** | `node --experimental-strip-types scripts/release-audit.ts` | `evidence/release-audit-2026-08-29.json` | `LOCAL_RECONSTRUCTED_CORE` | Repeat after current source changes. |
+| Tampered approval rejected | **PASS** | `npm run audit:release` | release-audit evidence | `LOCAL_RECONSTRUCTED_CORE` | Clean-checkout rerun. |
+| Expired token rejected | **PASS** | `npm run audit:release` | release-audit evidence | `LOCAL_RECONSTRUCTED_CORE` | Clean-checkout rerun. |
+| Wrong session rejected | **PASS** | `npm run audit:release` | release-audit evidence | `LOCAL_RECONSTRUCTED_CORE` | Clean-checkout rerun. |
+| Wrong provider origin rejected | **PASS** | `npm run audit:release` | release-audit evidence | `LOCAL_RECONSTRUCTED_CORE` | Clean-checkout rerun. |
+| Wrong provider version rejected | **PASS** | `npm run audit:release` | release-audit evidence | `LOCAL_RECONSTRUCTED_CORE` | Clean-checkout rerun. |
+| Aggregate authority escalation rejected | **PASS** | `npm run audit:release` | release-audit evidence | `LOCAL_RECONSTRUCTED_CORE` | Clean-checkout rerun. |
+| Incomplete same-origin batch rejected | **PASS** | `npm run audit:release` | release-audit evidence | `LOCAL_RECONSTRUCTED_CORE` | Provider before/after capacity still needs deployed proof. |
+| Human authority persists through stale restaging | **PASS** | strict TypeScript check plus `node --experimental-strip-types authority-check.ts` | `evidence/authority-persistence-2026-08-29.json` | `LOCAL_RECONSTRUCTED_CORE` | Repeat through the actual UI and ChatGPT. |
+| Authority cannot increase after human tightening | **PASS** | authority persistence check | same evidence | `LOCAL_RECONSTRUCTED_CORE` | Actual UI proof pending. |
+| Node release scripts have type definitions | **PARTIAL** | `npm run typecheck` | `package.json` pins `@types/node` | `REPOSITORY_CODE_REVIEW` | Full clean typecheck not run here. |
+| WebMCP diagnostics reject semantic `{ok:false}` | **PARTIAL** | `npm test` | diagnostics source and tests | `REPOSITORY_CODE_REVIEW` | Clean test suite and actual browser probe pending. |
+| Dynamic tool registration/revocation is race-safe | **PARTIAL** | `npm test` | runtime lifecycle tests | `REPOSITORY_CODE_REVIEW` | Clean test suite pending. |
+| Provider local batch is atomic | **PARTIAL** | `npm test` | provider-runtime atomicity tests | `REPOSITORY_CODE_REVIEW` | Deployed before/after inventory proof pending. |
+| North Shelter reserve is not double-subtracted after commit | **PARTIAL** | `npm test` | simulation regression tests | `REPOSITORY_CODE_REVIEW` | Full browser commit path pending. |
+| Audit bundle binds accepted approval, receipts, plan and mesh | **PARTIAL** | `relay_get_audit_bundle` after commit | release diagnostics source | `REPOSITORY_CODE_REVIEW` | Actual committed browser output pending. |
+| Origin-keyed agent cluster enforced | **PARTIAL** | `npm run check:origin-isolation` | Vite headers, Caddy header, bootstrap guard | `REPOSITORY_CODE_REVIEW` | Deployed header proof pending. |
 
----
+# Clean checkout gate
 
-## Priority 0: actual ChatGPT WebMCP compatibility
+Run when the repository is available locally:
 
-### Newly closed source blocker: origin-keyed agent clusters
+```bash
+git clone <REPOSITORY_URL>
+cd relay-webmcp
+git checkout build/pact-vertical-slice
 
-The WebMCP algorithms reject `registerTool()` and `getTools()` when a non-`file:` document is not in an origin-keyed agent cluster.
-
-Relay now enforces:
-
-```http
-Origin-Agent-Cluster: ?1
+node --version
+npm --version
+npm install --no-audit --no-fund
+npm run verify
+npm run check:origin-isolation
 ```
 
-across local Vite development, Vite preview and the production Caddy edge.
+Required results:
 
-| Source-level invariant | Status | Evidence | Remaining risk |
+| Gate | Status now | Required evidence |
+| --- | --- | --- |
+| Fresh dependency install | **NOT RUN** | terminal transcript |
+| Strict TypeScript check | **NOT RUN** | successful command output |
+| Dependency-free integrity smoke | **NOT RUN** on current full checkout | raw JSON output |
+| Hostile release audit | **NOT RUN** on current full checkout | raw JSON output including authority persistence |
+| Vitest suite | **NOT RUN** | passing test summary |
+| All four Vite production builds | **NOT RUN** | build output |
+| Origin-isolation static check | **NOT RUN** | raw JSON or terminal output |
+
+A lockfile is not currently proven in this environment. Before release, generate and commit `package-lock.json` from Node 22 and npm 10, then prefer:
+
+```bash
+npm ci
+```
+
+# GitHub Actions status
+
+| Gate | Status | Evidence | Interpretation |
 | --- | --- | --- | --- |
-| Caddy sets the header for all four hostnames | **PASS** | `deploy/Caddyfile`; origin source gate | Caddy runtime not executed here. |
-| All four Vite dev servers set the header | **PASS** | four `vite.config.ts` files; origin source gate | Browser response not captured here. |
-| All four Vite preview servers set the header | **PASS** | four `vite.config.ts` files; origin source gate | Preview process not executed here. |
-| TypeScript 5.8 knows `window.originAgentCluster` | **PASS** | `globals.d.ts`; strict bootstrap/config typecheck | Full repository typecheck still external. |
-| Relay Command rejects an explicit non-origin-keyed context | **PASS** | `bootstrap.ts`; source gate | Needs real browser proof. |
-| Diagnostic reports and enforces origin isolation | **PASS** | `release-diagnostics.ts`; source gate | Tool must still be client-visible in ChatGPT. |
-| Deployed smoke requires the exact response header | **PASS** | `deployment-smoke.mjs`; source gate | Requires deployed URLs. |
-| Docker verification can read deployment source | **PASS** | Docker build now copies `deploy/` before `npm run verify` | Docker build not executed here. |
+| Hosted workflow execution | **BLOCKED** | latest failed job has `steps: []` and no logs | Runner provisioning failed before checkout. Do not describe this as a test failure or test pass. |
 
-Evidence:
+Do not spend release time repeatedly rerunning the same hosted job unless account-level Actions provisioning changes.
 
-- `evidence/origin-isolation-hardening-2026-08-29.json`
-- [`webmcp-origin-isolation.md`](webmcp-origin-isolation.md)
+# Four-origin deployment gate
 
-### External compatibility gates
+Required inputs:
 
-| Gate | Status | Exact command or action | Evidence location | Remaining blocker |
-| --- | --- | --- | --- | --- |
-| Four real HTTPS origins configured | **BLOCKED** | Populate `.env.deploy` | uncommitted environment file | Need four hostnames and DNS control. |
-| Deployment preflight | **NOT RUN** | `npm run deploy:check` | `evidence/deployment/01-preflight.json` | Needs populated environment file. |
-| DNS preflight | **NOT RUN** | `npm run deploy:check:dns` | `evidence/deployment/02-dns.json` | Needs live DNS. |
-| Container build | **NOT RUN** | `docker compose --env-file .env.deploy build --pull` | terminal or CI log | Need Docker host access. |
-| HTTPS startup | **NOT RUN** | `docker compose --env-file .env.deploy up -d` | `docker compose ps` | Same blocker. |
-| Header and asset smoke on all origins | **NOT RUN** | `npm run deploy:smoke` | `evidence/deployment/03-https-smoke.json` | Needs deployed URLs. |
-| Fresh ChatGPT context reports `originIsolationPass: true` | **BLOCKED** | `relay_diagnose_webmcp` | `evidence/chatgpt/01-initial-diagnostic.json` | Need deployed URL and actual ChatGPT browser. |
-| Relay permanent tools client-visible | **BLOCKED** | same diagnostic | same file | Same blocker. |
-| Provider tools discoverable and semantically executable | **BLOCKED** | `{"executeReadProbes":true}` | same file | Same blocker. |
-| One proposal per provider through ChatGPT | **BLOCKED** | fixed bridge proposal tools | `02-provider-proposal-probes.json` | Same blocker. |
-| Dynamic capability creation and teardown | **BLOCKED** | diagnostics before/after proposal and stale state | `03-capability-created.json`, `04-capability-torn-down.json` | Same blocker. |
-| Full stale, recovery, approval and commit path | **BLOCKED** | exact validation prompt | `05-full-path.json` | Same blocker. |
-| Final audit bundle | **BLOCKED** | `relay_get_audit_bundle` | `06-final-audit-bundle.json` | Same blocker. |
-| Partial-commit recovery drill | **BLOCKED** | documented drill | `07-partial-commit-recovery.json` | Same blocker. |
+```text
+RELAY_HOST
+SHELTER_HOST
+TRANSIT_HOST
+SUPPLY_HOST
+ACME_EMAIL
+DNS access
+SSH or equivalent Docker access
+```
 
-Exact procedure:
+Commands:
+
+```bash
+cp .env.deploy.example .env.deploy
+# replace every placeholder
+
+npm run deploy:check
+npm run deploy:check:dns
+
+docker compose --env-file .env.deploy build --pull
+docker compose --env-file .env.deploy up -d
+docker compose --env-file .env.deploy ps
+
+npm run deploy:smoke
+```
+
+| Gate | Status | Evidence target | Remaining blocker |
+| --- | --- | --- | --- |
+| Four distinct hostnames configured | **BLOCKED** | `evidence/deployment/01-preflight.json` | Hostnames absent. |
+| DNS resolves to deployment host | **BLOCKED** | `evidence/deployment/02-dns.json` | DNS absent. |
+| Production image builds | **BLOCKED** | Docker build transcript | No Docker host access here. |
+| All four services become healthy | **BLOCKED** | `docker compose ps` | Same blocker. |
+| HTTPS roots load | **BLOCKED** | `evidence/deployment/03-https-smoke.json` | Deployment absent. |
+| Compiled origins contain no localhost fallback | **BLOCKED** | deployment smoke asset inspection | Deployment absent. |
+| `Origin-Agent-Cluster: ?1` on all four roots | **BLOCKED** | deployment smoke header checks | Deployment absent. |
+
+# Actual ChatGPT WebMCP gate
+
+Primary procedure:
 
 - [`chatgpt-validation.md`](chatgpt-validation.md)
 
----
+Required raw evidence:
 
-## Priority 1: hostile release audit
+```text
+evidence/chatgpt/01-initial-diagnostic.json
+evidence/chatgpt/02-provider-proposal-probes.json
+evidence/chatgpt/03-capability-created.json
+evidence/chatgpt/04-capability-torn-down.json
+evidence/chatgpt/05-full-path.json
+evidence/chatgpt/06-final-audit-bundle.json
+evidence/chatgpt/07-partial-commit-recovery.json
+```
 
-### Evidence currently passing
-
-- exact PACT signatures and scopes
-- tampered payload rejection
-- expired approval rejection
-- wrong session rejection
-- wrong origin rejection
-- wrong provider version rejection
-- aggregate cross-provider authority rejection
-- incomplete same-origin batch rejection
-- dynamic registration and revocation races
-- fixed bridge origin/tool binding
-- semantic provider execution probes
-- accepted-approval capture only after provider success
-- post-commit North Shelter reserve regression
-- origin-isolation source invariant
-
-Evidence files are indexed in [`../evidence/README.md`](../evidence/README.md).
-
-### Required hostile cases
-
-| # | Case | Status | Remaining blocker |
-| ---: | --- | --- | --- |
-| 1 | Normal 42-person evacuation completes | **PARTIAL** | Policy passes; deployed provider mutation and receipt convergence not run. |
-| 2 | Human lowers authority before approval | **PARTIAL** | Pure authority arithmetic passes; human UI path not run. |
-| 3 | Capacity change makes plan stale | **PARTIAL** | Version invalidation exists; deployed browser proof missing. |
-| 4 | Stale approval and commit capabilities disappear | **PARTIAL** | Runtime and bridge teardown pass in harness; actual `toolchange` evidence missing. |
-| 5 | Agent replaces only invalidated provider work | **BLOCKED** | Requires actual ChatGPT run. |
-| 6 | Tampered approval rejected | **PASS** | None at verifier layer. |
-| 7 | Expired token rejected | **PASS** | None at verifier layer. |
-| 8 | Wrong session rejected | **PASS** | None at verifier layer. |
-| 9 | Wrong origin rejected | **PASS** | None at source/harness layer. |
-| 10 | Wrong provider version rejected | **PASS** | None at verifier layer. |
-| 11 | Aggregate budget escalation rejected | **PASS** | None at verifier layer. |
-| 12 | Same-origin batch failure changes no capacity | **PARTIAL** | Atomicity harness passes; deployed before/after snapshot missing. |
-| 13 | Partial cross-provider completion represented and recovered | **PARTIAL** | Harness passes; actual Relay state and receipts missing. |
-| 14 | Audit binds accepted approval, final state and receipts | **PARTIAL** | Source and harness pass; completed deployed transaction missing. |
-
-### Clean checkout and CI
-
-| Gate | Status | Evidence | Remaining blocker |
-| --- | --- | --- | --- |
-| Clean install | **NOT RUN** | future local terminal log | No complete networked checkout in this environment. |
-| `npm run verify` | **NOT RUN** | future terminal log | Same blocker. |
-| Four Vite production builds | **NOT RUN** | future build log | Same blocker. |
-| Docker build | **NOT RUN** | future Docker log | Docker unavailable here. |
-| GitHub Actions | **BLOCKED** | run `33247913551`, job `99088484372` | `runner_id: 0`, empty runner name and zero steps. No repository command executed. |
-
-The red Actions badge is infrastructure noise, not a discovered code failure. It is not green evidence either.
-
----
-
-## Priority 2: locked three-minute demo
-
-| Requirement | Status | Remaining blocker |
+| Gate | Status | Required proof |
 | --- | --- | --- |
-| One objective across three provider websites | **PASS** | Deployment proof pending. |
-| Deterministic seed data | **PASS** | None. |
-| One-click reset | **PASS** | Deployed click pending. |
-| Exact prompt | **PASS** | None. |
-| Visible provider versions | **PASS** | Deployed render pending. |
-| Visible capability disappearance | **PARTIAL** | Actual ChatGPT capture required. |
-| Clear approval sheet | **PASS** | Rehearsal pending. |
-| Concise receipts and digest | **PARTIAL** | Final visual rehearsal pending. |
-| Proof console absent from judging URL | **PASS** | None. |
-| Runtime 2:40–2:50 | **NOT RUN** | Needs deployment and ChatGPT. |
+| Relay tools register and are visible to ChatGPT | **BLOCKED** | raw `relay_diagnose_webmcp` result |
+| All three provider origins are discovered | **BLOCKED** | diagnostic provider entries |
+| All three read tools execute semantically | **BLOCKED** | each `readProbe.result.ok === true` |
+| One real proposal executes against every provider | **BLOCKED** | raw proposal outputs |
+| Commit wrappers appear after proposals | **BLOCKED** | before/after diagnostic tool lists |
+| Initial plan stages at €5,000 authority | **BLOCKED** | raw `relay_get_plan` |
+| Human visibly tightens €5,000 → €3,000 | **BLOCKED** | UI plus raw plan revision |
+| €3,000 cap survives stale recovery | **BLOCKED** | recovered `relay_get_plan` despite agent request for €5,000 |
+| Stale approval and commit capabilities disappear | **BLOCKED** | teardown diagnostic |
+| Agent replaces only invalidated shelter work | **BLOCKED** | recovered proposal sequence |
+| Providers independently commit | **BLOCKED** | three commit outputs |
+| Six unique receipts reach Relay | **BLOCKED** | final plan output |
+| Final audit digest passes consistency | **BLOCKED** | raw audit bundle |
+| Partial cross-provider completion is represented and recovered | **BLOCKED** | dedicated recovery evidence |
 
-Locked script:
+Do not claim ChatGPT compatibility from Playwright, ordinary Chrome or `?proof=1`.
+
+# Demo lock
+
+Final script:
 
 - [`demo-script.md`](demo-script.md)
 
----
-
-## Priority 3: freeze and release
-
-| Action | Status |
-| --- | --- |
-| Keep `main` frozen | **PASS** |
-| Keep PR #1 draft | **PASS** |
-| Preserve history | **PASS** |
-| Four-origin smoke | **BLOCKED** |
-| Actual ChatGPT compatibility | **BLOCKED** |
-| Rehearse repeatedly | **BLOCKED** |
-| Record public video | **BLOCKED** |
-| Insert final URLs and evidence links | **BLOCKED** |
-| Make public or transfer if required | **BLOCKED** |
-| Merge PR #1 | **BLOCKED** |
-| Create submission tag | **BLOCKED** |
-
-## Exact human inputs still missing
+The locked sequence is:
 
 ```text
-1. RELAY_HOST
-2. SHELTER_HOST
-3. TRANSIT_HOST
-4. SUPPLY_HOST
-5. DNS control for all four hosts
-6. SSH or equivalent Docker access to the target server
-7. ACME_EMAIL
-8. Access to ChatGPT's supported built-in browser
+objective across three providers
+→ agent discovers and stages at €5,000 authority
+→ human tightens to €3,000
+→ approval call suspends
+→ shelter version changes
+→ stale capabilities disappear
+→ agent replaces only shelter work under retained €3,000 cap
+→ human approves exact recovered scopes
+→ providers verify and commit
+→ six receipts and audit digest appear
 ```
 
-No hostname or credential should be guessed.
+| Demo gate | Status | Remaining blocker |
+| --- | --- | --- |
+| Deterministic reset | **PARTIAL** | Code complete; deployed proof pending. |
+| Genuine human authority amendment | **PARTIAL** | Prompt and guard fixed; actual UI recording pending. |
+| Capability disappearance legible | **PARTIAL** | UI and diagnostics complete; rehearsal pending. |
+| 2:40–2:50 rehearsal | **BLOCKED** | Deployment and actual ChatGPT required. |
+| Three consecutive successful rehearsals | **BLOCKED** | Same blocker. |
+| Three consecutive stale/recovery rehearsals | **BLOCKED** | Same blocker. |
+| Public video under three minutes | **BLOCKED** | Record only after green rehearsals. |
 
-## Final merge rule
+# Freeze and release
 
-```text
-npm run verify                           PASS
-npm run deploy:check:dns                 PASS
-docker compose build                     PASS
-docker compose up                        PASS
-npm run deploy:smoke                     PASS
-originIsolationPass in actual ChatGPT    PASS
-provider discovery and execution         PASS
-full stale/recovery/commit path           PASS
-partial-commit recovery drill             PASS
-relay_get_audit_bundle                    PASS
-2:40–2:50 rehearsal                       PASS
-public video                              RECORDED
-repository visibility requirement        SATISFIED
-```
+| Action | Status | Rule |
+| --- | --- | --- |
+| Keep `main` frozen | **PASS** | No direct commits. |
+| Keep PR #1 draft | **PASS** | Do not mark ready yet. |
+| Preserve commit history | **PASS** | No squash/reset workaround before release. |
+| Final README/reproduction URLs | **BLOCKED** | Insert only real deployed URLs. |
+| Repository public or transferred if required | **BLOCKED** | Human account action after evidence passes. |
+| Merge PR #1 | **BLOCKED** | Every previous gate must pass. |
+| Create submission tag | **BLOCKED** | Tag the merged release commit only. |
 
-Until then:
+# Exact human actions still required
+
+When back at the computer:
+
+1. Open `build/pact-vertical-slice` in Codex.
+2. Run the clean-checkout commands above.
+3. Generate and commit `package-lock.json` if absent.
+4. Fix only reproducible failures; do not add scope.
+5. Supply four hostnames and point DNS to the Docker host.
+6. Deploy the Caddy/Compose stack.
+7. Run `npm run deploy:smoke`.
+8. Open Relay in a fresh ChatGPT built-in browser context.
+9. Execute every step in `docs/chatgpt-validation.md` and save raw JSON evidence.
+10. Rehearse the locked script until repeatable in 2:40–2:50.
+11. Record the public video.
+12. Make the repository public or transfer it only if required by the competition.
+13. Update this ledger to all green.
+14. Merge through PR #1.
+15. Create the submission tag.
+
+Until those actions complete:
 
 # **DO NOT MERGE**
