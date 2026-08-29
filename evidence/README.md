@@ -2,12 +2,17 @@
 
 Evidence is separated by execution environment. Do not upgrade one evidence class into another in the submission narrative.
 
-## Local core evidence
+## Local source evidence
 
 - `local-core-smoke-2026-08-29.json`
 - `release-audit-2026-08-29.json`
+- `release-modules-typecheck-2026-08-29.json`
 
-These files prove pure PACT, policy and dynamic-capability properties against core files reconstructed from the connected private branch. They do not prove a clean checkout, production build, deployed provider mutation or ChatGPT compatibility.
+The first two files prove pure PACT, policy and dynamic-capability properties against core files reconstructed from the connected private branch.
+
+The release-module typecheck proves strict TypeScript compatibility for the bridge, diagnostics, audit-evidence store, bootstrap and reset modules against the repository's exported interfaces.
+
+None of these files prove a clean full checkout, Vite production build, Docker build, deployed provider mutation or ChatGPT compatibility.
 
 ## Deployment evidence
 

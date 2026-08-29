@@ -1,0 +1,20 @@
+{
+  "schema": "relay.release-modules-typecheck.v1",
+  "sourceCommit": "75aad31f8705bfd90d2d7b637660a59eabc02dc3",
+  "executedAt": "2026-08-29T09:33:00Z",
+  "environment": {
+    "typescript": "5.8.3",
+    "mode": "strict noEmit"
+  },
+  "command": "tsc -p tsconfig-release.json --noEmit",
+  "files": [
+    "apps/relay-command/src/bootstrap.ts",
+    "apps/relay-command/src/compatibility-bridge.ts",
+    "apps/relay-command/src/release-diagnostics.ts",
+    "apps/relay-command/src/release-state.ts",
+    "apps/relay-command/src/scenario-reset.ts"
+  ],
+  "result": "pass",
+  "sourceMode": "The exact release module source was reconstructed from the connected private branch. Repository module APIs were represented by strict declaration stubs matching their exported signatures.",
+  "boundary": "This catches TypeScript and interface errors in the release modules. It is not a full clean checkout, Vite build, Docker build or browser execution."
+}
