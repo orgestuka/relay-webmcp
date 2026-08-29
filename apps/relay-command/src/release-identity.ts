@@ -1,11 +1,16 @@
 import { registerTool, toolOutput } from "@relay/webmcp-runtime";
-import { normalizeReleaseSha, validReleaseSha } from "./release-provenance";
+import {
+  consistentHeaderValue,
+  normalizeReleaseSha,
+  validReleaseSha,
+} from "./release-provenance";
 
 const compiledSha = normalizeReleaseSha(import.meta.env.VITE_RELEASE_SHA);
 
 async function readReleaseIdentity(): Promise<string> {
   let manifest: unknown = null;
   let manifestError: string | null = null;
+  let edgeHeaderRaw: string | null = null;
   let edgeSha: string | null = null;
   let responseStatus: number | null = null;
   let responseOk = false;
@@ -17,7 +22,8 @@ async function readReleaseIdentity(): Promise<string> {
     });
     responseStatus = response.status;
     responseOk = response.ok;
-    edgeSha = normalizeReleaseSha(response.headers.get("x-relay-release")) || null;
+    edgeHeaderRaw = response.headers.get("x-relay-release");
+    edgeSha = consistentHeaderValue(edgeHeaderRaw);
     try {
       manifest = JSON.parse(await response.text()) as unknown;
     } catch (error) {
@@ -25,6 +31,9 @@ async function readReleaseIdentity(): Promise<string> {
     }
     if (!response.ok && !manifestError) {
       manifestError = `release manifest returned HTTP ${response.status}`;
+    }
+    if (edgeHeaderRaw && !edgeSha && !manifestError) {
+      manifestError = "conflicting X-Relay-Release response headers";
     }
   } catch (error) {
     manifestError = error instanceof Error ? error.message : "release manifest request failed";
@@ -35,7 +44,8 @@ async function readReleaseIdentity(): Promise<string> {
     : null;
   const manifestSha = normalizeReleaseSha(record?.sha) || null;
   const compiledValid = validReleaseSha(compiledSha);
-  const edgeValid = validReleaseSha(edgeSha);
+  const edgeHeaderConsistent = edgeHeaderRaw !== null && edgeSha !== null;
+  const edgeValid = edgeHeaderConsistent && validReleaseSha(edgeSha);
   const manifestValid = responseOk
     && record?.schema === "relay.release.v1"
     && record?.app === "relay-command"
@@ -52,12 +62,14 @@ async function readReleaseIdentity(): Promise<string> {
     app: "relay-command",
     origin: window.location.origin,
     compiledSha: compiledSha || null,
+    edgeHeaderRaw,
     edgeSha,
     manifest,
     responseStatus,
     checks: {
       responseOk,
       compiledShaValid: compiledValid,
+      edgeHeaderConsistent,
       edgeShaValid: edgeValid,
       manifestValid,
       allLayersConsistent: consistent,
