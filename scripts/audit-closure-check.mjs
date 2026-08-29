@@ -11,7 +11,7 @@ function check(report, id, path, pass, detail) {
 }
 
 const report = {
-  schema: "relay.audit-closure-source-gate.v1",
+  schema: "relay.audit-closure-source-gate.v2",
   checkedAt: new Date().toISOString(),
   pass: false,
   checks: [],
@@ -118,10 +118,13 @@ try {
     "release_identity_fails_closed",
     "apps/relay-command/src/release-identity.ts",
     identity.includes("responseOk")
+      && identity.includes("consistentHeaderValue(edgeHeaderRaw)")
+      && identity.includes("edgeHeaderConsistent")
+      && identity.includes("conflicting X-Relay-Release response headers")
       && identity.includes("compiledSha === edgeSha")
       && identity.includes("edgeSha === manifestSha")
       && identity.includes("release manifest returned HTTP"),
-    "The release identity entering the final audit must reject non-success responses and every mismatched trust layer.",
+    "The release identity entering the final audit must reject non-success responses, conflicting duplicate edge identities and every mismatched trust layer.",
   );
 } catch (error) {
   report.blockers.push(error instanceof Error ? error.message : "Audit-closure source check failed.");
