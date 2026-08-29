@@ -235,11 +235,11 @@ Hard constraints:
 - preserve at least 20 unallocated beds at North Shelter
 - provide 42 evacuation kits
 - provide 9 mobility medical kits
-- keep total authority at or below €3,000
+- keep total cost at or below the incident budget of €5,000
 - create non-binding proposals first
 - do not commit anything before I approve the exact Relay plan
 
-Use the provider tools, stage the returned proposal IDs with relay_stage_plan, then call relay_request_approval and stop for my decision.
+Use the provider tools and stage the returned proposal IDs with relay_stage_plan using maxBudget 5000. Do not tighten the authority ceiling yourself. Then call relay_request_approval and stop for my decision.
 ```
 
 Expected initial plan:
@@ -252,7 +252,10 @@ Access Shuttle 10     10 accessible seats     €680
 Evacuation Kits       42 kits                 €504
 Mobility Medical Kits  9 kits                 €225
 Total                                         €2,733
+Initial authority ceiling                       €5,000
 ```
+
+If `relay_get_plan` shows a ceiling below €5,000 before the human amendment, the run fails. Reset and repeat. The human, not the agent, must perform the narrowing step.
 
 ## 7. Prove dynamic capability creation
 
@@ -277,13 +280,21 @@ evidence/chatgpt/03-capability-created.json
 
 ## 8. Human amendment and stale-state proof
 
-Set the authority ceiling to exactly:
+Change the authority ceiling from:
 
 ```text
-€3,000
+€5,000 → €3,000
 ```
 
-Let ChatGPT call `relay_request_approval`.
+Call `relay_get_plan` and confirm:
+
+```text
+maxBudget: 3000
+revision: previous revision + 1
+status: VALIDATED
+```
+
+Only then let ChatGPT call `relay_request_approval`.
 
 While the call is suspended, click:
 
@@ -319,7 +330,7 @@ evidence/chatgpt/04-capability-torn-down.json
 Send:
 
 ```text
-Recover the stale Relay plan. Re-query and replace only the invalid Shelter Grid proposals. Reuse Transit Ops and Supply Hub proposals only if their provider state versions remain current. Restage, then request exact approval again.
+Recover the stale Relay plan. Re-query and replace only the invalid Shelter Grid proposals. Reuse Transit Ops and Supply Hub proposals only if their provider state versions remain current. Restage with maxBudget 3000 so the human-amended authority remains in force, then request exact approval again.
 ```
 
 Expected replacement shelter operations:
@@ -411,15 +422,17 @@ evidence/chatgpt/06-final-audit-bundle.json
 
 Run separately after resetting the scenario.
 
-1. Build and approve the canonical plan.
-2. Commit Shelter Grid successfully.
-3. Call `relay_get_plan`.
-4. Required intermediate state:
+1. Build the canonical plan at €5,000 authority.
+2. Human narrows authority to €3,000.
+3. Approve the amended plan.
+4. Commit Shelter Grid successfully.
+5. Call `relay_get_plan`.
+6. Required intermediate state:
    - status `APPROVED`, not `COMMITTED`
    - only Shelter Grid receipts present
    - Transit Ops and Supply Hub pending
-5. Intentionally submit only one of the two approved Transit Ops proposal IDs.
-6. Required result:
+7. Intentionally submit only one of the two approved Transit Ops proposal IDs.
+8. Required result:
 
 ```json
 {
@@ -428,8 +441,8 @@ Run separately after resetting the scenario.
 }
 ```
 
-7. Re-query Transit Ops. Its capacity and version must be unchanged.
-8. Call `relay_get_audit_bundle`. It must return:
+9. Re-query Transit Ops. Its capacity and version must be unchanged.
+10. Call `relay_get_audit_bundle`. It must return:
 
 ```json
 {
@@ -445,9 +458,9 @@ Run separately after resetting the scenario.
 }
 ```
 
-9. Retry Transit Ops with both approved proposal IDs while the token is still live.
-10. Commit Supply Hub.
-11. Final audit must return `ok: true`.
+11. Retry Transit Ops with both approved proposal IDs while the token is still live.
+12. Commit Supply Hub.
+13. Final audit must return `ok: true`.
 
 Save:
 
@@ -480,11 +493,14 @@ This records whether that ChatGPT build directly exposes descendant provider too
 - [ ] All three read probes return semantic success
 - [ ] One real proposal succeeds against every provider
 - [ ] Commit wrappers appear dynamically
-- [ ] Human narrows authority before consent
+- [ ] Initial plan stages with a €5,000 authority ceiling
+- [ ] Human visibly narrows authority from €5,000 to €3,000
+- [ ] Amended plan revision increments and remains `VALIDATED`
 - [ ] Approval call visibly suspends
 - [ ] Shelter state change invalidates stale authority
 - [ ] Stale approval and commit capabilities disappear
 - [ ] Recovery replaces only stale provider work
+- [ ] Recovered plan retains the €3,000 human ceiling
 - [ ] Human approves exact recovered scopes
 - [ ] Providers independently verify and commit
 - [ ] Six unique receipts reach Relay
