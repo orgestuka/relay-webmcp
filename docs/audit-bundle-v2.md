@@ -1,6 +1,6 @@
 # Relay audit bundle v2
 
-`relay_get_audit_bundle` is the final proof that a visible Relay transaction, the human-approved PACT capsule and the provider receipts describe the same operation set.
+`relay_get_audit_bundle` is the final proof that the deployed release, visible Relay plan, human-approved PACT capsules and provider receipts describe the same operation set.
 
 The audit is deliberately stricter than checking that the plan status says `COMMITTED`.
 
@@ -24,37 +24,43 @@ Preserve the raw JSON without summarizing it.
   "digest": "<base64url digest>",
   "bundle": {
     "schema": "relay.audit.v2",
-    "currentPlanHash": "<canonical PACT plan hash>",
+    "releaseIdentity": {
+      "ok": true,
+      "compiledSha": "<exact commit>",
+      "edgeSha": "<same commit>",
+      "manifest": {
+        "schema": "relay.release.v1",
+        "app": "relay-command",
+        "sha": "<same commit>"
+      }
+    },
     "approvals": [
       {
         "payloadDigest": "<approval payload digest>",
         "token": {
           "algorithm": "ECDSA_P256_SHA256",
           "payload": {
-            "planId": "<same plan ID>",
-            "planHash": "<same currentPlanHash>",
+            "planId": "<final plan ID>",
+            "planHash": "<canonical final plan hash>",
             "maximumCost": 3000,
-            "scopes": ["<exact plan scopes>"]
+            "scopes": ["<exact final plan scopes>"]
           }
         }
       }
     ],
     "consistency": {
-      "approvalCount": 1,
-      "exactApprovalPlan": true,
-      "exactApprovalHash": true,
-      "exactAuthorityCeiling": true,
-      "exactScopeSet": true,
-      "exactReceiptSet": true,
-      "exactScopeArguments": true,
-      "exactReceiptArguments": true,
-      "planTotalConsistent": true,
-      "scopeTotalConsistent": true,
-      "receiptTotalConsistent": true,
-      "withinAuthority": true,
+      "planStatus": "COMMITTED",
+      "matchingApprovalCount": 1,
+      "matchingApprovalSessionCount": 1,
+      "approvalScopeCoverageExact": true,
+      "approvalScopesMatchPlan": true,
+      "approvalAuthorityMatchesPlan": true,
+      "receiptCoverageExact": true,
+      "receiptsMatchPlan": true,
+      "planTotalMatchesProposals": true,
+      "receiptTotalMatchesPlan": true,
       "committed": true,
-      "pass": true,
-      "failures": []
+      "pass": true
     },
     "plan": "<relay_get_plan output>",
     "mesh": "<relay_get_mesh_state output>"
@@ -62,43 +68,77 @@ Preserve the raw JSON without summarizing it.
 }
 ```
 
+`matchingApprovalCount` can exceed one only for safe exact reapproval or recovery in the same Relay session. Every matching capsule must independently contain the exact final plan scope set, arguments and authority. A second broader, altered or cross-session capsule cannot make the audit pass.
+
 ## Exact equality requirements
 
-The audit passes only when all three sets are identical:
+The audit passes only when these sets are identical:
 
 ```text
-current plan proposal IDs
+final plan proposal IDs
 =
-human-approved PACT scope IDs
+each matching human-approved PACT scope set
 =
 provider receipt proposal IDs
 ```
 
-For every proposal, the audit also compares:
+For every proposal and scope, the audit compares:
 
-- provider ID
-- provider origin
+- proposal ID
+- provider ID and provider origin
 - resource ID and visible label
 - quantity and unit
-- unit cost and total cost
+- unit cost and maximum scoped cost
 - stated purpose
 - provider state version
 - proposal expiry
-- receipt amount and resulting state version
+
+For every receipt, it compares:
+
+- receipt and proposal identity
+- provider ID and provider origin
+- committed amount and cost
+- resulting provider state version
+- valid commit timestamp
 
 It separately proves:
 
-- the approval plan ID equals the current plan ID
-- the approval plan hash equals a newly computed canonical plan hash
-- the approval ceiling equals the plan authority ceiling
-- proposal, approval-scope and receipt aggregates all equal the plan total
-- the plan total remains within human authority
+- the final plan has a valid shape and unique proposal IDs
+- the current canonical plan hash can be recomputed
+- matching approvals bind the current plan ID and current plan hash
+- every matching approval comes from one Relay session
+- every matching approval contains one exact scope per final proposal
+- every matching approval ceiling equals the visible plan authority ceiling
+- every matching approval scope aggregate equals the visible plan total
 - receipt IDs and receipt proposal IDs are unique
-- the final plan status is `COMMITTED`
+- every final proposal has exactly one matching receipt
+- proposal and receipt aggregates equal the visible plan total
+- final plan status is `COMMITTED`
+
+## Release identity dependency
+
+The audit first calls `relay_get_release_identity`. It refuses to certify a transaction unless:
+
+```text
+compiled application SHA
+=
+trusted X-Relay-Release edge header
+=
+/release.json SHA
+```
+
+A provenance failure returns:
+
+```json
+{
+  "ok": false,
+  "code": "AUDIT_RELEASE_IDENTITY_FAILED"
+}
+```
 
 ## Required failure behavior
 
-Any inconsistency returns:
+A transaction-state inconsistency returns:
 
 ```json
 {
@@ -106,7 +146,6 @@ Any inconsistency returns:
   "code": "AUDIT_STATE_INCONSISTENT",
   "algorithm": "SHA-256",
   "digest": "<digest of the failed evidence bundle>",
-  "failures": ["<specific failed invariants>"],
   "bundle": {
     "schema": "relay.audit.v2",
     "consistency": {
@@ -116,35 +155,37 @@ Any inconsistency returns:
 }
 ```
 
-The bundle and digest are still returned on failure so partial or adversarial states remain inspectable instead of disappearing.
+The failed bundle and digest remain inspectable. Relay does not hide partial or adversarial states.
 
 Expected failures include:
 
-- a missing receipt
-- an extra or duplicated receipt
-- receipt provenance that differs from the proposal origin
-- a receipt amount or cost that differs from the proposal
-- an approved scope changed after consent
-- approval bound to another plan ID or hash
-- an authority ceiling that differs from the visible plan
-- multiple accepted approval capsules in one scenario
-- a partial cross-provider state
-- a plan that claims `COMMITTED` without exact receipt equality
+- missing, extra or duplicated receipt
+- malformed receipt data
+- receipt provider provenance that differs from the proposal
+- receipt amount or cost that differs from the proposal
+- approval bound to another plan ID or plan hash
+- missing final proposal scope
+- altered scope resource, quantity, price, purpose, version or expiry
+- authority ceiling or scope aggregate that differs from the visible plan
+- matching approvals from multiple sessions
+- a non-exact reapproval capsule
+- partial cross-provider completion
+- a plan that claims `COMMITTED` without exact receipt closure
 
 ## Submission evidence
 
-Store the actual ChatGPT result at:
+Store actual ChatGPT output under ignored runtime evidence while validating:
 
 ```text
-evidence/chatgpt/06-final-audit-bundle.json
+.relay-artifacts/chatgpt/08-final-audit-bundle.json
 ```
 
-The evidence file must identify:
+The evidence record must identify:
 
 - deployed Relay URL
 - tested commit SHA
 - ChatGPT build when visible
-- test timestamp
+- timestamp
 - fixed-bridge or direct mode
 
-A harness result must not be relabeled as actual ChatGPT evidence.
+A harness result must not be relabeled as actual ChatGPT evidence. Do not commit runtime evidence after deploying a SHA unless the resulting new commit is rebuilt, redeployed and revalidated.
