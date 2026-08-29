@@ -92,6 +92,28 @@ describe("Riverside evacuation policy", () => {
     expect(check(result, "north_reserve").pass).toBe(false);
   });
 
+  it("does not subtract North Shelter beds twice after provider commit", () => {
+    const plan = validPlan().filter((candidate) => candidate.providerId !== "shelter");
+    const north = proposal("shelter", states[0].origin, "north", "North Shelter", 12, "beds", 14);
+    const east = proposal("shelter", states[0].origin, "east", "East Shelter", 18, "beds", 10);
+    const south = proposal("shelter", states[0].origin, "south", "South Shelter", 12, "beds", 9);
+    plan.push(north, east, south);
+
+    const beforeCommit = validateEvacuationPlan(plan, states, 3000);
+    expect(check(beforeCommit, "north_reserve").actual).toBe(34);
+
+    const afterCommitStates = structuredClone(states);
+    const shelter = afterCommitStates.find((state) => state.providerId === "shelter")!;
+    shelter.stateVersion = 2;
+    shelter.resources.find((resource) => resource.id === "north")!.available = 34;
+    shelter.resources.find((resource) => resource.id === "east")!.available = 0;
+    shelter.resources.find((resource) => resource.id === "south")!.available = 12;
+
+    const afterCommit = validateEvacuationPlan(plan, afterCommitStates, 3000);
+    expect(check(afterCommit, "north_reserve").actual).toBe(34);
+    expect(check(afterCommit, "north_reserve").pass).toBe(true);
+  });
+
   it("rejects missing mobility support even when general kits are complete", () => {
     const plan = validPlan().filter((candidate) => candidate.resourceId !== "medical-kit");
     const result = validateEvacuationPlan(plan, states, 3000);
