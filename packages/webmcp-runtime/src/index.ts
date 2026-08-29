@@ -3,13 +3,17 @@ export interface ToolAnnotations {
   untrustedContentHint?: boolean;
 }
 
+export interface ToolExecutionOptions {
+  signal?: AbortSignal;
+}
+
 export interface ToolDefinition<TInput extends object = Record<string, unknown>> {
   name: string;
   title?: string;
   description: string;
   inputSchema?: Record<string, unknown>;
   annotations?: ToolAnnotations;
-  execute(input: TInput, options?: { signal?: AbortSignal }): Promise<unknown> | unknown;
+  execute(input: TInput, options?: ToolExecutionOptions): Promise<unknown> | unknown;
 }
 
 export interface RegisteredTool {
@@ -22,7 +26,12 @@ export interface RegisteredTool {
 interface ModelContextLike extends EventTarget {
   registerTool(tool: ToolDefinition, options?: { signal?: AbortSignal; exposedTo?: string[] }): Promise<void>;
   getTools?(options?: { fromOrigins?: string[] }): Promise<RegisteredTool[]>;
-  executeTool?(tool: RegisteredTool, input?: string, options?: { signal?: AbortSignal }): Promise<string | null>;
+  executeTool?(tool: RegisteredTool, input?: string, options?: ToolExecutionOptions): Promise<string | null>;
+}
+
+interface LocalRegistration {
+  definition: ToolDefinition;
+  controller: AbortController;
 }
 
 declare global {
@@ -34,12 +43,33 @@ declare global {
   }
 }
 
+const localRegistrations = new Map<string, LocalRegistration>();
+
 export function getModelContext(): ModelContextLike | null {
   return document.modelContext ?? navigator.modelContext ?? null;
 }
 
 export function webMcpAvailable(): boolean {
   return Boolean(getModelContext()?.registerTool);
+}
+
+export function getLocalRegisteredToolNames(): string[] {
+  return [...localRegistrations.entries()]
+    .filter(([, registration]) => !registration.controller.signal.aborted)
+    .map(([name]) => name)
+    .sort();
+}
+
+export async function executeLocalRegisteredTool<TInput extends object = Record<string, unknown>>(
+  name: string,
+  input: TInput,
+  options?: ToolExecutionOptions,
+): Promise<unknown> {
+  const registration = localRegistrations.get(name);
+  if (!registration || registration.controller.signal.aborted) {
+    throw new Error(`Local WebMCP tool ${name} is not currently registered.`);
+  }
+  return registration.definition.execute(input, options);
 }
 
 function deferredAbort(controller: AbortController | null): void {
@@ -63,6 +93,18 @@ export async function registerTool<TInput extends object>(
       signal: controller.signal,
       exposedTo: options.exposedTo,
     });
+
+    const registration: LocalRegistration = {
+      definition: tool as ToolDefinition,
+      controller,
+    };
+    localRegistrations.set(tool.name, registration);
+    controller.signal.addEventListener("abort", () => {
+      if (localRegistrations.get(tool.name) === registration) {
+        localRegistrations.delete(tool.name);
+      }
+    }, { once: true });
+
     return controller;
   } catch (error) {
     controller.abort();
