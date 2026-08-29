@@ -10,25 +10,44 @@
     X-Content-Type-Options "nosniff"
     Referrer-Policy "no-referrer"
     Origin-Agent-Cluster "?1"
+    Strict-Transport-Security "max-age=31536000"
+  }
+}
+
+(relay_command_security) {
+  header {
+    Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-src https://{$SHELTER_HOST} https://{$TRANSIT_HOST} https://{$SUPPLY_HOST}; object-src 'none'; base-uri 'none'; form-action 'none'; worker-src 'none'; manifest-src 'none'"
+    Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), tools=(self \"https://{$SHELTER_HOST}\" \"https://{$TRANSIT_HOST}\" \"https://{$SUPPLY_HOST}\")"
+  }
+}
+
+(relay_provider_security) {
+  header {
+    Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors https://{$RELAY_HOST}; worker-src 'none'; manifest-src 'none'"
+    Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), tools=(self)"
   }
 }
 
 {$RELAY_HOST} {
   import relay_common
+  import relay_command_security
   reverse_proxy relay-command:80
 }
 
 {$SHELTER_HOST} {
   import relay_common
+  import relay_provider_security
   reverse_proxy shelter-grid:80
 }
 
 {$TRANSIT_HOST} {
   import relay_common
+  import relay_provider_security
   reverse_proxy transit-ops:80
 }
 
 {$SUPPLY_HOST} {
   import relay_common
+  import relay_provider_security
   reverse_proxy supply-hub:80
 }
