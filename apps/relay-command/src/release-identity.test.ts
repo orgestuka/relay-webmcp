@@ -108,6 +108,7 @@ describe("relay_get_release_identity", () => {
       edgeSha: releaseSha,
       responseStatus: 200,
       checks: {
+        responseOk: true,
         compiledShaValid: true,
         edgeShaValid: true,
         manifestValid: true,
@@ -127,7 +128,7 @@ describe("relay_get_release_identity", () => {
       ok: false,
       compiledSha: releaseSha,
       edgeSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      checks: { allLayersConsistent: false },
+      checks: { responseOk: true, allLayersConsistent: false },
     });
   });
 
@@ -135,7 +136,7 @@ describe("relay_get_release_identity", () => {
     const wrongApp = await execute(await importReleaseIdentity({ manifestApp: "shelter-grid" }));
     expect(wrongApp).toMatchObject({
       ok: false,
-      checks: { manifestValid: false, allLayersConsistent: false },
+      checks: { responseOk: true, manifestValid: false, allLayersConsistent: false },
     });
 
     const wrongSha = await execute(await importReleaseIdentity({
@@ -143,7 +144,7 @@ describe("relay_get_release_identity", () => {
     }));
     expect(wrongSha).toMatchObject({
       ok: false,
-      checks: { manifestValid: true, allLayersConsistent: false },
+      checks: { responseOk: true, manifestValid: true, allLayersConsistent: false },
     });
   });
 
@@ -153,14 +154,29 @@ describe("relay_get_release_identity", () => {
     }));
     expect(placeholder).toMatchObject({
       ok: false,
-      checks: { compiledShaValid: false, allLayersConsistent: false },
+      checks: { responseOk: true, compiledShaValid: false, allLayersConsistent: false },
     });
 
     const missingEdge = await execute(await importReleaseIdentity({ edgeSha: null }));
     expect(missingEdge).toMatchObject({
       ok: false,
       edgeSha: null,
-      checks: { edgeShaValid: false, allLayersConsistent: false },
+      checks: { responseOk: true, edgeShaValid: false, allLayersConsistent: false },
+    });
+  });
+
+  it("rejects a non-success manifest response even when its body looks valid", async () => {
+    const result = await execute(await importReleaseIdentity({ responseStatus: 503 }));
+
+    expect(result).toMatchObject({
+      ok: false,
+      responseStatus: 503,
+      checks: {
+        responseOk: false,
+        manifestValid: false,
+        allLayersConsistent: false,
+      },
+      manifestError: "release manifest returned HTTP 503",
     });
   });
 
@@ -174,7 +190,7 @@ describe("relay_get_release_identity", () => {
       edgeSha: null,
       manifest: null,
       responseStatus: null,
-      checks: { allLayersConsistent: false },
+      checks: { responseOk: false, allLayersConsistent: false },
       manifestError: "synthetic network failure",
     });
   });
