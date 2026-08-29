@@ -84,10 +84,12 @@ try {
     "preflight_release_validation",
     "scripts/deploy-preflight.mjs",
     preflight.includes("validReleaseSha")
-      && preflight.includes("RELAY_RELEASE_SHA")
-      && preflight.includes("git rev-parse HEAD")
+      && preflight.includes("execFileSync")
+      && preflight.includes("release_sha_matches_checkout")
+      && preflight.includes("result.releaseSha === result.currentGitSha")
+      && preflight.includes("clean_checkout")
       && preflight.includes("write-release-manifests.mjs"),
-    "Deployment preflight must reject placeholders and missing provenance inputs before Docker runs.",
+    "Deployment preflight must reject placeholders, dirty trees and a SHA that differs from the exact checkout before Docker runs.",
   );
 
   record(
