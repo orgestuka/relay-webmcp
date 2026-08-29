@@ -8,7 +8,7 @@ A release is invalid unless all conditions hold:
 
 - branch is `build/pact-vertical-slice`
 - worktree is clean before and after verification
-- Node.js major version is 22
+- Node.js is exactly `22.16.0`
 - npm is exactly `10.9.2`
 - a committed `package-lock.json` with `lockfileVersion >= 3` exists
 - `RELAY_RELEASE_SHA` equals `git rev-parse HEAD`
@@ -55,9 +55,18 @@ git checkout build/pact-vertical-slice
 git pull --ff-only origin build/pact-vertical-slice
 git status --short
 git rev-parse HEAD
+nvm install
+nvm use
 node --version
 npm --version
 npm run gate:source
+```
+
+Required versions:
+
+```text
+v22.16.0
+10.9.2
 ```
 
 Do not deploy unless the source gate returns `"pass": true`.
@@ -99,7 +108,7 @@ npm run gate:release -- --env .env.deploy
 The full gate performs, in order:
 
 1. branch, clean-tree and exact-head checks
-2. Node 22 and npm 10.9.2 checks
+2. exact Node 22.16.0 and npm 10.9.2 checks across package metadata, `.nvmrc` and the running process
 3. committed lockfile validation
 4. release-script syntax and static release-contract audit
 5. fresh `npm ci`
@@ -109,7 +118,7 @@ The full gate performs, in order:
 9. Compose rendering
 10. Caddy syntax validation with the exact release SHA
 11. Nginx syntax validation
-12. production image build
+12. production image build from `node:22.16.0-alpine`
 13. four-origin startup
 14. deployed HTTPS, security-header, embedded-origin and release-provenance smoke
 15. final Compose status and clean-tree check
