@@ -5,6 +5,7 @@ import {
   toolOutput,
   type RegisteredTool,
 } from "@relay/webmcp-runtime";
+import { readApprovalEvidence } from "./release-state";
 
 interface ProviderDiagnosticSpec {
   id: "shelter" | "transit" | "supply";
@@ -241,7 +242,7 @@ async function registerReleaseTools(): Promise<void> {
   await registerTool({
     name: "relay_get_audit_bundle",
     title: "Export signed-transaction audit evidence",
-    description: "Read Relay's current plan and mesh state, then bind the captured plan, approval scopes, provider state and receipts to a canonical SHA-256 digest. Read-only.",
+    description: "Read Relay's current plan and mesh state, include every PACT approval token observed at provider commit and bind the complete evidence bundle to a canonical SHA-256 digest. Read-only.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, untrustedContentHint: false },
     execute: async () => {
@@ -250,17 +251,27 @@ async function registerReleaseTools(): Promise<void> {
           readLocalTool("relay_get_plan"),
           readLocalTool("relay_get_mesh_state"),
         ]);
+        const approvals = readApprovalEvidence();
+        if (!approvals.length) {
+          return toolOutput({
+            ok: false,
+            code: "APPROVAL_EVIDENCE_MISSING",
+            message: "No signed PACT approval token has passed through a fixed provider commit bridge in this page session.",
+          });
+        }
         const bundle = {
           schema: "relay.audit.v1",
           capturedAt: new Date().toISOString(),
           commandOrigin,
           providerOrigins: Object.fromEntries(providerSpecs.map((provider) => [provider.id, provider.origin])),
+          approvals,
           plan,
           mesh,
         };
         return toolOutput({
           ok: true,
           algorithm: "SHA-256",
+          approvalCount: approvals.length,
           digest: await sha256(bundle),
           bundle,
         });

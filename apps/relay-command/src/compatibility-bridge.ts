@@ -6,6 +6,7 @@ import {
   type RegisteredTool,
   type ToolAnnotations,
 } from "@relay/webmcp-runtime";
+import { recordApprovalEvidence } from "./release-state";
 
 interface BridgeSpec {
   provider: "shelter" | "transit" | "supply";
@@ -159,6 +160,7 @@ const specs: BridgeSpec[] = [
 
 const wrappers = new Map<string, DynamicTool>();
 let syncTimer: number | null = null;
+let syncInterval: number | null = null;
 let syncRunning = false;
 let syncRequested = false;
 let lastSyncAt: string | null = null;
@@ -173,6 +175,18 @@ async function discoverRemoteTools(): Promise<RegisteredTool[]> {
   if (!context?.getTools) return [];
   const tools = await context.getTools({ fromOrigins: Object.values(origins) });
   return tools.filter((tool) => Object.values(origins).includes(tool.origin));
+}
+
+function providerAccepted(result: string): boolean {
+  try {
+    const value = JSON.parse(result) as unknown;
+    return Boolean(value)
+      && typeof value === "object"
+      && !Array.isArray(value)
+      && (value as Record<string, unknown>).ok === true;
+  } catch {
+    return false;
+  }
 }
 
 function wrapperFor(spec: BridgeSpec): DynamicTool {
@@ -220,6 +234,9 @@ function wrapperFor(spec: BridgeSpec): DynamicTool {
             origin: spec.origin,
             remoteTool: spec.remoteName,
           });
+        }
+        if (spec.remoteName.endsWith("_commit_reservation") && providerAccepted(result)) {
+          await recordApprovalEvidence(input?.approvalToken);
         }
         return result;
       } catch (error) {
@@ -302,6 +319,7 @@ async function bootBridge(): Promise<void> {
         arbitraryToolSelection: false,
         providerAuthorizationBypassed: false,
         dynamicCapabilityMirroring: true,
+        periodicDiscoveryFallback: true,
       },
     }),
   });
@@ -310,9 +328,11 @@ async function bootBridge(): Promise<void> {
   scheduleSync(0);
   globalThis.setTimeout(() => scheduleSync(0), 300);
   globalThis.setTimeout(() => scheduleSync(0), 900);
+  syncInterval = globalThis.setInterval(() => scheduleSync(0), 500);
 
   window.addEventListener("pagehide", () => {
     if (syncTimer !== null) globalThis.clearTimeout(syncTimer);
+    if (syncInterval !== null) globalThis.clearInterval(syncInterval);
     for (const wrapper of wrappers.values()) wrapper.disable();
   }, { once: true });
 }
