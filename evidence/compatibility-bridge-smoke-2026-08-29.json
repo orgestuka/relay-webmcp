@@ -1,0 +1,49 @@
+{
+  "schema": "relay.compatibility-bridge-smoke.v1",
+  "sourceCommit": "4ccff50ea870cce9631ed7548fb7dff118e02bbd",
+  "sourceBlobs": {
+    "apps/relay-command/src/compatibility-bridge.ts": "6aabb4105d40dbce386b1c31249bf68b5e7b19c0",
+    "apps/relay-command/src/release-state.ts": "e974c71d9fb44c9d55f20d09efe118a175916411",
+    "apps/relay-command/src/compatibility-bridge.test.ts": "pending-current-branch-blob"
+  },
+  "executedAt": "2026-08-29T09:48:30Z",
+  "environment": {
+    "node": "v22.16.0",
+    "typescript": "5.8.3",
+    "mode": "deterministic ModelContext runtime double"
+  },
+  "commands": [
+    "tsc -p /mnt/data/relay-bridge-harness/tsconfig.json --pretty false",
+    "node /mnt/data/relay-bridge-harness/dist/harness-release.js"
+  ],
+  "result": "pass",
+  "checks": {
+    "fixedReadAndProposalWrappersCreatedForAllProviders": "pass",
+    "commitWrapperAbsentBeforeUnderlyingCapability": "pass",
+    "exactShelterOriginSelectedDespiteWrongOriginNameCollision": "pass",
+    "noGenericExecuteAnyCapability": "pass",
+    "providerSemanticRejectionPropagated": "pass",
+    "rejectedApprovalTokenNotRecorded": "pass",
+    "providerAcceptedApprovalRecordedExactlyOnce": "pass",
+    "dynamicCommitWrapperCreated": "pass",
+    "dynamicCommitWrapperTornDown": "pass"
+  },
+  "runtimeOutput": {
+    "commandToolsAfterTeardown": [
+      "relay_bridge_shelter_find_capacity",
+      "relay_bridge_shelter_propose_reservation",
+      "relay_bridge_status",
+      "relay_bridge_supply_check_stock",
+      "relay_bridge_supply_propose_reservation",
+      "relay_bridge_transit_find_accessible_routes",
+      "relay_bridge_transit_propose_reservation"
+    ],
+    "remoteInvocationCount": 3,
+    "approvalEvidenceCount": 1,
+    "dynamicCommitCreated": true,
+    "dynamicCommitTornDown": true,
+    "genericExecutionCapability": false
+  },
+  "sourceMode": "The current bridge and release-state logic were transformed only to replace workspace import specifiers with local compiled module paths. The execution used a deterministic in-memory ModelContext implementing registration, origin-filtered discovery, executeTool and toolchange.",
+  "boundary": "This proves bridge routing and lifecycle logic. It is harness evidence, not a Vite build, deployed HTTPS execution or actual ChatGPT built-in-browser evidence."
+}
