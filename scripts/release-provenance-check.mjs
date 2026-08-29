@@ -62,6 +62,18 @@ try {
 
   record(
     report,
+    "docker_deterministic_install",
+    "deploy/Dockerfile",
+    dockerfile.includes("COPY package.json package-lock.json")
+      && dockerfile.includes("npm install --global npm@10.9.2")
+      && dockerfile.includes('test "$(npm --version)" = "10.9.2"')
+      && dockerfile.includes("npm ci --no-audit --no-fund")
+      && !dockerfile.includes("RUN npm install --no-audit --no-fund"),
+    "The production image must be built from the committed lockfile with the pinned npm release.",
+  );
+
+  record(
+    report,
     "docker_manifest_generation",
     "deploy/Dockerfile",
     dockerfile.includes("ARG VITE_RELEASE_SHA")
@@ -133,10 +145,11 @@ try {
       && releaseIdentity.includes('name: "relay_get_release_identity"')
       && releaseIdentity.includes('fetch("/release.json"')
       && releaseIdentity.includes('response.headers.get("x-relay-release")')
+      && releaseIdentity.includes("responseOk")
       && releaseIdentity.includes("compiledSha === edgeSha")
       && releaseIdentity.includes("edgeSha === manifestSha")
       && releaseIdentity.includes('schema: "relay.release-identity.v1"'),
-    "ChatGPT must be able to call one read-only tool that proves the compiled application, trusted edge header and release manifest all identify the same commit.",
+    "ChatGPT must be able to call one read-only tool that proves a successful manifest response, compiled application, trusted edge header and release manifest all identify the same commit.",
   );
 } catch (error) {
   report.blockers.push(error instanceof Error ? error.message : "Release-provenance source gate failed.");
