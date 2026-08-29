@@ -1,0 +1,48 @@
+{
+  "schema": "relay.provider-runtime-hostile-drill.v1",
+  "sourceCommit": "b73628e1929e12e21238f223f2aa131e519df3bc",
+  "sourceBlobs": {
+    "packages/provider-runtime/src/index.ts": "f74b003012d20054a33a87dd8216b1af7aebd1e1",
+    "packages/provider-runtime/src/index.test.ts": "8d88cfa81c8da255a896cb705a97bde4fee5fafb",
+    "packages/webmcp-runtime/src/index.ts": "e412360ec10eea293949056e03ac3bad77902ae6"
+  },
+  "executedAt": "2026-08-29T10:05:00Z",
+  "environment": {
+    "node": "v22.16.0",
+    "mode": "dependency-free deterministic provider harness"
+  },
+  "commands": [
+    "node --experimental-strip-types /tmp/provider-runtime-check/run.mts",
+    "node --experimental-strip-types /tmp/provider-runtime-check/run-stale.mts"
+  ],
+  "result": "pass",
+  "checks": {
+    "incompleteApprovedBatchRejected": true,
+    "capacityUnchangedAfterBatchFailure": true,
+    "completeSameOriginBatchAppliedAtomically": true,
+    "twoOriginBoundReceiptsEmitted": true,
+    "commitCapabilityRevokedAfterCommit": true,
+    "providerVersionAdvancedOnDisruption": true,
+    "staleCommitCapabilityRevoked": true,
+    "capturedStaleHandleRejected": true,
+    "capacityUnchangedAfterStaleAttempt": true
+  },
+  "runtimeOutput": [
+    {
+      "partialBatchRejected": true,
+      "capacityUnchangedOnFailure": true,
+      "atomicCommit": true,
+      "receipts": 2,
+      "commitCapabilityRevoked": true
+    },
+    {
+      "stateVersionAdvanced": true,
+      "staleCapabilityRevoked": true,
+      "capturedStaleHandleRejected": true,
+      "capacityUnchangedAfterStaleAttempt": true
+    }
+  ],
+  "sourceMode": "The exact current provider runtime behavior was reconstructed from the connected private branch. PACT cryptographic and exact-scope verification is evidenced separately; this drill used contract-compatible authorization doubles to isolate provider mutation, atomicity and capability revocation.",
+  "repositoryTest": "packages/provider-runtime/src/index.test.ts repeats the same invariants with the real PACT signer and verifier when the full Vitest suite runs.",
+  "boundary": "This is strong local provider-runtime evidence, not a clean checkout, deployed browser or actual ChatGPT end-to-end run."
+}
