@@ -4,6 +4,8 @@
     "globals.d.ts",
     "packages/**/*.ts",
     "apps/**/src/**/*.ts",
-    "scripts/**/*.ts"
+    "scripts/**/*.ts",
+    "vitest.config.ts",
+    "vitest.setup.ts"
   ]
 }
