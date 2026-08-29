@@ -2,6 +2,7 @@ import { readFile, access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { resolve } from "node:path";
 import { promises as dns } from "node:dns";
+import { execFileSync } from "node:child_process";
 
 const envPath = resolve(process.argv[2] || ".env.deploy");
 const requireDns = process.argv.includes("--dns");
@@ -63,6 +64,7 @@ const result = {
   pass: false,
   urls: {},
   releaseSha: null,
+  currentGitSha: null,
   checks: [],
   blockers: [],
 };
@@ -102,7 +104,32 @@ try {
     value: result.releaseSha,
     instruction: "Set RELAY_RELEASE_SHA=$(git rev-parse HEAD) from the exact clean branch checkout being deployed.",
   });
-  if (!releaseShaPass) result.blockers.push("RELAY_RELEASE_SHA must be the exact non-zero 40-character Git commit SHA being deployed.");
+  if (!releaseShaPass) result.blockers.push("RELAY_RELEASE_SHA must be a non-zero 40-character Git commit SHA.");
+
+  try {
+    result.currentGitSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      encoding: "utf8",
+      cwd: process.cwd(),
+    }).trim().toLowerCase();
+    const cleanStatus = execFileSync("git", ["status", "--porcelain", "--untracked-files=all"], {
+      encoding: "utf8",
+      cwd: process.cwd(),
+    }).trim();
+    const cleanPass = cleanStatus === "";
+    result.checks.push({ id: "clean_checkout", pass: cleanPass, status: cleanStatus });
+    if (!cleanPass) result.blockers.push("Deployment preflight requires a clean Git checkout.");
+
+    const checkoutMatch = releaseShaPass && result.releaseSha === result.currentGitSha;
+    result.checks.push({
+      id: "release_sha_matches_checkout",
+      pass: checkoutMatch,
+      releaseSha: result.releaseSha,
+      currentGitSha: result.currentGitSha,
+    });
+    if (!checkoutMatch) result.blockers.push("RELAY_RELEASE_SHA does not match git rev-parse HEAD for this checkout.");
+  } catch (error) {
+    result.blockers.push(`Unable to verify deployment Git provenance: ${error instanceof Error ? error.message : "git failure"}.`);
+  }
 
   const requiredFiles = [
     "compose.yaml",
