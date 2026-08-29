@@ -1,4 +1,4 @@
-FROM node:22-alpine AS build
+FROM node:22.16.0-alpine AS build
 
 WORKDIR /workspace
 
@@ -22,7 +22,8 @@ COPY packages ./packages
 COPY scripts ./scripts
 COPY deploy ./deploy
 
-RUN npm install --global npm@10.9.2 --no-audit --no-fund \
+RUN test "$(node --version)" = "v22.16.0" \
+    && npm install --global npm@10.9.2 --no-audit --no-fund \
     && test "$(npm --version)" = "10.9.2" \
     && npm ci --no-audit --no-fund
 RUN npm run verify
