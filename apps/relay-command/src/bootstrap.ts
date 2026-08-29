@@ -72,8 +72,11 @@ async function boot(): Promise<void> {
   // default. ?direct=1 exists solely for controlled compatibility diagnosis.
   if (!directOnly) await import("./compatibility-bridge");
 
-  await import("./release-diagnostics");
+  // Release identity is part of the permanent compatibility surface. Register
+  // it before diagnostics so the first diagnostic cannot observe a transiently
+  // incomplete tool set.
   await import("./release-identity");
+  await import("./release-diagnostics");
   await import("./capability-surface");
   await import("./fault-injection");
   await import("./scenario-reset");
