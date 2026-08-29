@@ -10,7 +10,7 @@ Integration path: **draft PR #1 only**
 
 ## **DO NOT MERGE**
 
-The GitHub-side implementation and release contract are now hardened, but the exact current branch has not yet passed a clean machine execution. The next blocker is not another speculative code feature. It is generating the real npm lockfile and executing the branch on a human-controlled computer.
+The GitHub-side implementation and release contract are hardened, but the exact current branch has not passed a clean machine execution. The next blocker is not another speculative code feature. It is generating the real npm lockfile and executing the branch on a human-controlled computer.
 
 ## Status vocabulary
 
@@ -23,20 +23,21 @@ The GitHub-side implementation and release contract are now hardened, but the ex
 
 ## What is source-ready
 
-The branch now contains source controls for:
+The branch contains source controls for:
 
 - exact PACT scope, signature, provider-origin, state-version, expiry and authority verification
 - registration-time and invocation-time human approval gating for top-level commit wrappers
-- bounded initial bridge readiness before diagnostics become callable
+- bounded five-second initial bridge readiness before diagnostics become callable
 - stale capability teardown and retained human authority through recovery
 - exact final plan, approval scope and receipt audit closure
-- compiled, edge-header and `/release.json` commit identity equality
+- compiled, conflict-safe edge-header and `/release.json` commit identity equality
 - production boot rejection of a missing or placeholder release SHA
 - `Origin-Agent-Cluster: ?1` across Vite, Nginx and Caddy
 - origin-scoped CSP and WebMCP Permissions-Policy
 - read-only application containers and immutable hashed assets
+- exact Node 22.16.0 and npm 10.9.2 pins across `.nvmrc`, package engines, CI, Docker and release gates
 - dependency-free script syntax and static release-surface gates
-- one source release gate and one full deployment gate
+- one canonical source release gate and one canonical deployment gate
 
 These are **SOURCE-READY**, not runtime passes.
 
@@ -44,7 +45,7 @@ These are **SOURCE-READY**, not runtime passes.
 
 | Gate | Status | Why |
 | --- | --- | --- |
-| Committed `package-lock.json` | **BLOCKED** | Must be generated from the real npm registry with Node 22 and npm 10.9.2. It must not be fabricated through GitHub. |
+| Committed `package-lock.json` | **BLOCKED** | Must be generated from the real npm registry with Node 22.16.0 and npm 10.9.2. It must not be fabricated through GitHub. |
 | Clean `npm ci` | **BLOCKED** | Requires the real lockfile and local filesystem. |
 | Full `npm run verify` | **BLOCKED** | Requires installed dependencies and actual execution. |
 | Four Vite production builds | **BLOCKED** | Included in verification but not executed on the exact head. |
@@ -85,12 +86,22 @@ The first machine phase is:
 ```bash
 git checkout build/pact-vertical-slice
 git pull --ff-only origin build/pact-vertical-slice
-nvm use 22
+nvm install
+nvm use
 npm install --global npm@10.9.2 --no-audit --no-fund
+node --version
+npm --version
 npm install --package-lock-only --ignore-scripts --no-audit --no-fund
 rm -rf node_modules
 npm ci --no-audit --no-fund
 npm run verify
+```
+
+Required exact versions:
+
+```text
+v22.16.0
+10.9.2
 ```
 
 After the lockfile is reviewed and committed from a green working copy:
@@ -130,7 +141,7 @@ The deployed smoke must prove all four origins share:
 ```text
 exact release SHA
 valid release.json manifest
-X-Relay-Release header
+one non-conflicting X-Relay-Release identity
 Origin-Agent-Cluster: ?1
 correct CSP
 correct tools Permissions-Policy
