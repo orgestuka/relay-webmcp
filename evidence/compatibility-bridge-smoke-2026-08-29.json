@@ -4,7 +4,7 @@
   "sourceBlobs": {
     "apps/relay-command/src/compatibility-bridge.ts": "6aabb4105d40dbce386b1c31249bf68b5e7b19c0",
     "apps/relay-command/src/release-state.ts": "e974c71d9fb44c9d55f20d09efe118a175916411",
-    "apps/relay-command/src/compatibility-bridge.test.ts": "pending-current-branch-blob"
+    "apps/relay-command/src/compatibility-bridge.test.ts": "2a98d6643d63c06ca896158c8fb78e7ece9a9f08"
   },
   "executedAt": "2026-08-29T09:48:30Z",
   "environment": {
