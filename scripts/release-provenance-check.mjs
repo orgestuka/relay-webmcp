@@ -19,7 +19,18 @@ const report = {
 };
 
 try {
-  const [envExample, compose, dockerfile, caddy, writer, preflight, smoke, globals] = await Promise.all([
+  const [
+    envExample,
+    compose,
+    dockerfile,
+    caddy,
+    writer,
+    preflight,
+    smoke,
+    globals,
+    bootstrap,
+    releaseIdentity,
+  ] = await Promise.all([
     source(".env.deploy.example"),
     source("compose.yaml"),
     source("deploy/Dockerfile"),
@@ -28,6 +39,8 @@ try {
     source("scripts/deploy-preflight.mjs"),
     source("scripts/deployment-smoke.mjs"),
     source("globals.d.ts"),
+    source("apps/relay-command/src/bootstrap.ts"),
+    source("apps/relay-command/src/release-identity.ts"),
   ]);
 
   record(
@@ -110,6 +123,20 @@ try {
     "globals.d.ts",
     globals.includes("readonly VITE_RELEASE_SHA?: string;"),
     "TypeScript must model the immutable build provenance input.",
+  );
+
+  record(
+    report,
+    "chatgpt_release_identity_tool",
+    "apps/relay-command/src/release-identity.ts",
+    bootstrap.includes('import("./release-identity")')
+      && releaseIdentity.includes('name: "relay_get_release_identity"')
+      && releaseIdentity.includes('fetch("/release.json"')
+      && releaseIdentity.includes('response.headers.get("x-relay-release")')
+      && releaseIdentity.includes("compiledSha === edgeSha")
+      && releaseIdentity.includes("edgeSha === manifestSha")
+      && releaseIdentity.includes('schema: "relay.release-identity.v1"'),
+    "ChatGPT must be able to call one read-only tool that proves the compiled application, trusted edge header and release manifest all identify the same commit.",
   );
 } catch (error) {
   report.blockers.push(error instanceof Error ? error.message : "Release-provenance source gate failed.");
