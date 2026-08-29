@@ -16,13 +16,15 @@ ENV VITE_RELAY_ORIGIN=$VITE_RELAY_ORIGIN \
     VITE_ENABLE_PROOF_RUNNER=$VITE_ENABLE_PROOF_RUNNER \
     VITE_RELEASE_SHA=$VITE_RELEASE_SHA
 
-COPY package.json .npmrc .nvmrc tsconfig.json tsconfig.check.json globals.d.ts ./
+COPY package.json package-lock.json .npmrc .nvmrc tsconfig.json tsconfig.check.json globals.d.ts ./
 COPY apps ./apps
 COPY packages ./packages
 COPY scripts ./scripts
 COPY deploy ./deploy
 
-RUN npm install --no-audit --no-fund
+RUN npm install --global npm@10.9.2 --no-audit --no-fund \
+    && test "$(npm --version)" = "10.9.2" \
+    && npm ci --no-audit --no-fund
 RUN npm run verify
 RUN node scripts/write-release-manifests.mjs "$VITE_RELEASE_SHA"
 
