@@ -80,7 +80,7 @@ The bridge:
 4. invokes only the exact underlying provider tool through `executeTool()`
 5. unregisters obsolete wrappers when provider capability or authority disappears
 
-Relay bounds the initial bridge registration race before diagnostics become callable. Provider-side PACT verification remains authoritative. The bridge cannot sign approval, bypass state versions or mutate inventory directly.
+Relay allows a bounded five-second cold-start window for the permanent read/proposal bridge before diagnostics become callable. Provider-side PACT verification remains authoritative. The bridge cannot sign approval, bypass state versions or mutate inventory directly.
 
 Use the normal Relay URL for judging. `?direct=1` disables the bridge only for controlled compatibility diagnosis.
 
@@ -182,12 +182,12 @@ Proves equality between:
 ```text
 compiled application commit
 =
-trusted X-Relay-Release edge header
+one non-conflicting X-Relay-Release edge identity
 =
 /release.json manifest commit
 ```
 
-Production Relay fails to boot without a valid compiled release SHA.
+Production Relay fails to boot without a valid compiled release SHA. A non-success manifest or conflicting duplicate release header fails the identity gate.
 
 ### `relay_diagnose_webmcp`
 
@@ -248,15 +248,17 @@ docs/
 
 ## Local verification
 
-Requirements:
+Requirements exactly:
 
 ```text
-Node.js 22.x
+Node.js 22.16.0
 npm 10.9.2
 committed package-lock.json with lockfileVersion >= 3
 ```
 
 ```bash
+nvm install
+nvm use
 npm ci --no-audit --no-fund
 npm run verify
 ```
@@ -295,7 +297,7 @@ npm run dev
 
 ## Source release gate
 
-From a clean `build/pact-vertical-slice` checkout:
+From a clean `build/pact-vertical-slice` checkout using the exact pinned toolchain:
 
 ```bash
 npm run gate:source
