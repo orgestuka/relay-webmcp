@@ -1,0 +1,29 @@
+{
+  "schema": "relay.release-diagnostics-semantic-probe.v1",
+  "sourceCommit": "5523e9d4a5cc5d2dd446571b76a5c7447e324193",
+  "sourceBlob": {
+    "apps/relay-command/src/release-diagnostics.ts": "90192fbd4223e5ae86885c3c8f9ebb428dee0040"
+  },
+  "executedAt": "2026-08-29T09:47:00Z",
+  "environment": {
+    "node": "v22.16.0",
+    "typescript": "5.8.3"
+  },
+  "commands": [
+    "tsc -p /tmp/relay-diag-check/tsconfig.json --noEmit",
+    "node --experimental-strip-types /tmp/relay-diag-runtime/run.mts"
+  ],
+  "result": "pass",
+  "checks": {
+    "strictTypecheck": "pass",
+    "parsedProviderOkFalseRejected": "pass",
+    "threeProviderOkTrueProbesAccepted": "pass",
+    "semanticFailurePayloadPreservedForEvidence": "pass"
+  },
+  "runtimeOutput": {
+    "semanticFailureRejected": true,
+    "validProviderProbesAccepted": true
+  },
+  "sourceMode": "The exact current release-diagnostics source was reconstructed from the connected private branch. Repository dependencies were represented by strict declarations and deterministic runtime doubles matching their exported contracts.",
+  "boundary": "This proves fail-closed diagnostic result interpretation and TypeScript correctness. It is not a clean checkout, Vite build, deployed provider execution or actual ChatGPT evidence."
+}
