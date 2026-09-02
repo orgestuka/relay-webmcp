@@ -1,6 +1,6 @@
 # Submission readiness
 
-Status date: **2026-08-29**
+Status date: **2026-09-02**
 
 Branch: `build/pact-vertical-slice`
 
@@ -8,9 +8,9 @@ Integration path: **draft PR #1 only**
 
 # Current recommendation
 
-## **DO NOT MERGE**
+## **SOURCE AND PACKAGED RUNTIME PASS — DO NOT MERGE YET**
 
-The GitHub-side implementation and release contract are hardened, but the exact current branch has not passed a clean machine execution. The next blocker is not another speculative code feature. It is generating the real npm lockfile and executing the branch on a human-controlled computer.
+The exact branch passes the clean source release gate and the production image builds and serves all four applications under the Compose read-only security profile. The remaining blockers are external: push/hosted CI visibility, four public HTTPS origins, actual ChatGPT validation, rehearsals and the public submission video.
 
 ## Status vocabulary
 
@@ -21,7 +21,7 @@ The GitHub-side implementation and release contract are hardened, but the exact 
 | **BLOCKED** | A required human-controlled environment or credential is absent. |
 | **FAIL** | The exact gate ran and failed. |
 
-## What is source-ready
+## What the source gate verifies
 
 The branch contains source controls for:
 
@@ -39,17 +39,19 @@ The branch contains source controls for:
 - dependency-free script syntax and static release-surface gates
 - one canonical source release gate and one canonical deployment gate
 
-These are **SOURCE-READY**, not runtime passes.
+These controls pass source verification. Public edge behavior and actual ChatGPT compatibility remain separate external runtime gates.
 
 ## Current hard boundary
 
 | Gate | Status | Why |
 | --- | --- | --- |
-| Committed `package-lock.json` | **BLOCKED** | Must be generated from the real npm registry with Node 22.16.0 and npm 10.9.2. It must not be fabricated through GitHub. |
-| Clean `npm ci` | **BLOCKED** | Requires the real lockfile and local filesystem. |
-| Full `npm run verify` | **BLOCKED** | Requires installed dependencies and actual execution. |
-| Four Vite production builds | **BLOCKED** | Included in verification but not executed on the exact head. |
-| Docker image and Compose stack | **BLOCKED** | Requires Docker Engine/Desktop. |
+| Committed `package-lock.json` | **PASS** | Lockfile v3 is committed and consumed with npm 10.9.2. |
+| Clean `npm ci` | **PASS** | Executed by the clean source gate. |
+| Full `npm run verify` | **PASS** | 81 release-contract checks, 75 tests, typecheck, smoke and release audits pass. |
+| Four Vite production builds | **PASS** | All four production bundles build inside the local gate and production image. |
+| Production Docker image | **PASS** | The image verifies before runtime and all four app modes pass direct container health, headers and release-manifest smoke under the read-only Compose profile. |
+| Hosted GitHub CI | **BLOCKED** | The latest local commit must be pushed and a runner-backed workflow result observed. |
+| Full public Compose stack | **BLOCKED** | Requires deployment configuration, public DNS and certificate issuance. |
 | Four public HTTPS origins and DNS | **BLOCKED** | Requires domain and infrastructure control. |
 | Actual ChatGPT built-in-browser proof | **BLOCKED** | Requires the deployed origins and a human-operated ChatGPT browser context. |
 | Rehearsal and video | **BLOCKED** | Must use the validated deployment. |
@@ -57,11 +59,7 @@ These are **SOURCE-READY**, not runtime passes.
 ## Exact remaining sequence
 
 ```text
-generate and inspect package-lock.json
-→ npm ci
-→ npm run verify
-→ commit lockfile
-→ clean npm run gate:source
+push exact gated commit and observe hosted CI
 → configure four DNS names
 → clean npm run gate:release
 → relay_get_release_identity
@@ -77,24 +75,20 @@ generate and inspect package-lock.json
 → submission tag
 ```
 
-## Human handoff command path
+## Verified local command path
 
 Follow [`codex-local-release.md`](codex-local-release.md).
 
-The first machine phase is:
+The completed source phase is reproducible with:
 
 ```bash
 git checkout build/pact-vertical-slice
-git pull --ff-only origin build/pact-vertical-slice
 nvm install
 nvm use
 npm install --global npm@10.9.2 --no-audit --no-fund
 node --version
 npm --version
-npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-rm -rf node_modules
-npm ci --no-audit --no-fund
-npm run verify
+npm run gate:source
 ```
 
 Required exact versions:
@@ -102,12 +96,6 @@ Required exact versions:
 ```text
 v22.16.0
 10.9.2
-```
-
-After the lockfile is reviewed and committed from a green working copy:
-
-```bash
-npm run gate:source
 ```
 
 The source gate must produce:
@@ -178,7 +166,7 @@ Ordinary Chrome, Playwright and `?proof=1` remain harness evidence only.
 
 ## GitHub Actions status
 
-Hosted Actions has previously failed before runner allocation with zero executed steps. Until a run receives a real runner, do not label that state as either a code failure or a verification pass. The local source gate is the authoritative unblock path.
+The local source gate is green. Hosted Actions still needs a runner-backed result for the exact pushed commit; a pre-allocation failure or a run with zero executed steps is neither a code failure nor a verification pass.
 
 ## Merge rule
 
