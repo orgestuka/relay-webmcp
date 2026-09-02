@@ -16,7 +16,9 @@ ENV VITE_RELAY_ORIGIN=$VITE_RELAY_ORIGIN \
     VITE_ENABLE_PROOF_RUNNER=$VITE_ENABLE_PROOF_RUNNER \
     VITE_RELEASE_SHA=$VITE_RELEASE_SHA
 
-COPY package.json package-lock.json .npmrc .nvmrc tsconfig.json tsconfig.check.json globals.d.ts ./
+COPY package.json package-lock.json .npmrc .nvmrc tsconfig.json tsconfig.check.json vitest.config.ts vitest.setup.ts globals.d.ts ./
+COPY compose.yaml .env.deploy.example ./
+COPY .github/workflows/ci.yml ./.github/workflows/ci.yml
 COPY apps ./apps
 COPY packages ./packages
 COPY scripts ./scripts

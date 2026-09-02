@@ -120,6 +120,14 @@ const dockerfile = content.dockerfile ?? "";
 check("docker_exact_node_image", dockerfile.startsWith("FROM node:22.16.0-alpine AS build") && dockerfile.includes('test "$(node --version)" = "v22.16.0"'), files.dockerfile, "The production build must use and verify Node 22.16.0 exactly.");
 check("docker_release_sha_arg", dockerfile.includes("ARG VITE_RELEASE_SHA") && dockerfile.includes("VITE_RELEASE_SHA=$VITE_RELEASE_SHA"), files.dockerfile, "Docker must embed release provenance.");
 check("docker_locked_install", dockerfile.includes("COPY package.json package-lock.json") && dockerfile.includes("npm ci --no-audit --no-fund") && dockerfile.includes("npm@10.9.2"), files.dockerfile, "Docker must install the committed lockfile with the pinned npm version.");
+check(
+  "docker_verification_inputs",
+  dockerfile.includes("vitest.config.ts vitest.setup.ts")
+    && dockerfile.includes("COPY compose.yaml .env.deploy.example ./")
+    && dockerfile.includes("COPY .github/workflows/ci.yml ./.github/workflows/ci.yml"),
+  files.dockerfile,
+  "The Docker build must include every repository-level input consumed by the full verification graph.",
+);
 check("docker_verifies_before_runtime", dockerfile.indexOf("RUN npm run verify") >= 0 && dockerfile.indexOf("RUN npm run verify") < dockerfile.indexOf("FROM nginx:alpine"), files.dockerfile, "Unverified source must not reach the runtime image.");
 check("docker_release_manifests", dockerfile.includes('node scripts/write-release-manifests.mjs "$VITE_RELEASE_SHA"'), files.dockerfile, "Every built application must receive a release manifest bound to the exact SHA.");
 
