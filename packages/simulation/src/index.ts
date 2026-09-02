@@ -1,4 +1,4 @@
-export { validateEvacuationPlan, type PolicyCheck, type PolicyResult } from "./policy";
+export { validateEvacuationPlan, type PolicyCheck, type PolicyResult } from "./policy.ts";
 
 import type { ProviderId, ResourceRecord } from "@relay/contracts";
 

@@ -93,7 +93,7 @@ const expectedInitialBridgeTools = [
 
 const evidence: ToolchangeEvidence[] = [];
 let evidenceSequence = 0;
-let captureTimer: number | null = null;
+let captureTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);

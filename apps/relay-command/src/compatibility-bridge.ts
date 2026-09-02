@@ -177,8 +177,8 @@ const specs: BridgeSpec[] = [
 ];
 
 const wrappers = new Map<string, DynamicTool>();
-let syncTimer: number | null = null;
-let syncInterval: number | null = null;
+let syncTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+let syncInterval: ReturnType<typeof globalThis.setInterval> | null = null;
 let syncRunning = false;
 let syncRequested = false;
 let lastSyncAt: string | null = null;

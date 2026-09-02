@@ -69,7 +69,8 @@ try {
 
   const deploymentSmoke = await source("scripts/deployment-smoke.mjs");
   const smokePass = deploymentSmoke.includes('page.headers.get("origin-agent-cluster")')
-    && deploymentSmoke.includes('originAgentCluster?.trim() === "?1"');
+    && deploymentSmoke.includes('consistentHeaderValue(originAgentClusterRaw) === "?1"')
+    && deploymentSmoke.includes("result.pass = result.checks.every");
   record(checks, "deployed_header_smoke", "scripts/deployment-smoke.mjs", smokePass, "The four-origin HTTPS smoke must reject any origin missing the exact header.");
   if (!smokePass) blockers.push("Deployment smoke does not verify Origin-Agent-Cluster: ?1.");
 } catch (error) {

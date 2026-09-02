@@ -77,7 +77,14 @@ const ci = content.ci ?? "";
 check("ci_uses_nvmrc", ci.includes("node-version-file: .nvmrc"), files.ci, "GitHub Actions must consume the same exact Node pin as local validation.");
 check("ci_locked_install", ci.includes("npm ci --no-audit --no-fund") && !ci.includes("npm install --no-audit --no-fund"), files.ci, "CI must install the committed lockfile rather than resolve a new dependency graph.");
 check("ci_runs_full_verify", ci.includes("npm run verify"), files.ci, "CI must execute the complete repository verification graph.");
-check("ci_embeds_exact_commit", ci.includes("RELAY_RELEASE_SHA=${{ github.sha }}") && ci.includes("VITE_RELEASE_SHA=${{ github.sha }}"), files.ci, "CI preflight and image build must identify the exact checked-out commit.");
+check(
+  "ci_embeds_exact_commit",
+  ci.includes('sha=$(git rev-parse HEAD)')
+    && ci.includes("RELAY_RELEASE_SHA=${RELEASE_SHA}")
+    && ci.includes('--build-arg VITE_RELEASE_SHA="${RELEASE_SHA}"'),
+  files.ci,
+  "CI preflight and image build must identify the exact checked-out commit.",
+);
 
 for (const key of ["commandVite", "shelterVite", "transitVite", "supplyVite"]) {
   const source = content[key] ?? "";
@@ -168,7 +175,15 @@ check("package_surface_check", scripts["check:release-surface"] === "node script
 check("verify_includes_meta_gates", typeof scripts.verify === "string" && scripts.verify.includes("check:scripts") && scripts.verify.includes("check:release-surface"), files.package, "Normal verification must include the release script and surface gates.");
 
 const releaseGate = content.releaseGate ?? "";
-check("release_gate_locked_install", releaseGate.includes("package-lock.json") && releaseGate.includes("lockfileVersion") && releaseGate.includes("npm ci") && releaseGate.includes("10.9.2"), files.releaseGate, "The operator gate must enforce and install the exact locked dependency graph.");
+check(
+  "release_gate_locked_install",
+  releaseGate.includes('resolve("package-lock.json")')
+    && releaseGate.includes("lockfile.lockfileVersion")
+    && releaseGate.includes('execute("locked_install", "npm", ["ci", "--no-audit", "--no-fund"])')
+    && releaseGate.includes('expectedNpm === "10.9.2"'),
+  files.releaseGate,
+  "The operator gate must enforce and install the exact locked dependency graph.",
+);
 check("release_gate_exact_toolchain", releaseGate.includes("node_pin_declared") && releaseGate.includes("nvm_pin_matches") && releaseGate.includes("node_exact") && releaseGate.includes("npm_exact") && releaseGate.includes("22.16.0"), files.releaseGate, "The operator gate must prove that package metadata, .nvmrc and the running process use one exact Node/npm toolchain.");
 check("release_gate_clean_after", releaseGate.includes("clean_worktree_after"), files.releaseGate, "Verification must leave the checkout unchanged.");
 check("release_gate_output_directory", releaseGate.includes("mkdirSync") && releaseGate.includes(".relay-artifacts"), files.releaseGate, "Machine-readable release evidence must have a safe ignored default location.");

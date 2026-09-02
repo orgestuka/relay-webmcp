@@ -56,6 +56,12 @@ export function getHumanAuthorityCeiling(): number {
   return authority.maximum;
 }
 
+export function stageLockedStatus(status: unknown): boolean {
+  return status === "AWAITING_APPROVAL"
+    || status === "APPROVED"
+    || status === "COMMITTED";
+}
+
 function parsePlanEnvelope(raw: unknown): PlanEnvelope | null {
   try {
     const value = typeof raw === "string" ? JSON.parse(raw) as unknown : raw;

@@ -100,7 +100,9 @@ describe("tool input guards", () => {
 
     await expect(executeLocalRegisteredTool(name, { maxBudget: 5000 }))
       .resolves.toEqual({ maxBudget: 3000 });
-    await expect(browserDefinition?.execute({ maxBudget: 5000 }))
+    const registeredDefinition = browserDefinition as ToolDefinition | null;
+    if (!registeredDefinition) throw new Error("Browser tool definition was not registered.");
+    await expect(registeredDefinition.execute({ maxBudget: 5000 }))
       .resolves.toEqual({ maxBudget: 3000 });
 
     controller?.abort();

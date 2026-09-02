@@ -14,6 +14,7 @@ import type {
 import { createSessionSigner, hashPlan, proposalScope, type SessionSigner } from "@relay/pact";
 import { incident, validateEvacuationPlan } from "@relay/simulation";
 import { DynamicTool, registerTool, toolOutput, webMcpAvailable } from "@relay/webmcp-runtime";
+import { stageLockedStatus } from "./authority-guard";
 
 const providerIds: readonly ProviderId[] = ["shelter", "transit", "supply"];
 
@@ -405,6 +406,15 @@ function validateStageInput(value: unknown): {
 }
 
 async function stagePlan(input: unknown): Promise<string> {
+  if (stageLockedStatus(currentPlan?.status)) {
+    return toolOutput({
+      ok: false,
+      code: "PLAN_REPLACEMENT_LOCKED",
+      status: currentPlan?.status,
+      message: "The current plan cannot be replaced after consent begins.",
+    });
+  }
+
   const validated = validateStageInput(input);
   if (!validated) return toolOutput({ ok: false, code: "INVALID_INPUT", message: "Provide a summary, rationale, unique proposal IDs and a valid budget." });
 

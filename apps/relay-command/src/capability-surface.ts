@@ -14,7 +14,7 @@ panel.setAttribute("aria-label", "Live WebMCP capability surface");
 document.body.append(panel);
 
 let refreshGeneration = 0;
-let refreshTimer: number | null = null;
+let refreshTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
 
 function originLabel(origin: string | undefined): string {
   if (!origin || origin === window.location.origin) return "Relay";

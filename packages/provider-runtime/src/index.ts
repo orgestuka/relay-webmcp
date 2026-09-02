@@ -107,7 +107,7 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
   let stateVersion = 1;
   const resources = structuredClone(seed.resources);
   let trust: SessionTrust | null = null;
-  let expiryTimer: number | null = null;
+  let expiryTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   let disruptionInjected = false;
   const proposals = new Map<string, ProviderProposal>();
   const receipts: CommitReceipt[] = [];

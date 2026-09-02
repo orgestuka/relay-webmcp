@@ -1,17 +1,18 @@
 import { defineConfig } from "vite";
 
-const originIsolationHeaders = {
+const webMcpHeaders = {
   "Origin-Agent-Cluster": "?1",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), tools=*",
 };
 
 export default defineConfig({
   server: {
     strictPort: true,
-    headers: originIsolationHeaders,
+    headers: webMcpHeaders,
   },
   preview: {
     strictPort: true,
-    headers: originIsolationHeaders,
+    headers: webMcpHeaders,
   },
   build: {
     target: "es2022",
