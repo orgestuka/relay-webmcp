@@ -113,6 +113,7 @@ const plan: PlanDraft = {
   incidentId: "FLOOD-RIVERSIDE-042",
   summary: "Canonical evacuation",
   rationale: "All deterministic constraints pass.",
+  completionDeadline: "18:00",
   proposals,
   totalCost: proposals.reduce((sum, item) => sum + item.totalCost, 0),
   maxBudget: 3000,
@@ -201,7 +202,7 @@ const states: ProviderStateSnapshot[] = [
   },
 ];
 
-const policy = validateEvacuationPlan(proposals, states, 3000);
+const policy = validateEvacuationPlan(proposals, states, 3000, "18:00", "18:00");
 assert(policy.ok, "canonical plan failed policy");
 assert(
   policy.checks.find((check) => check.id === "budget")?.actual === 2733,
@@ -212,6 +213,8 @@ assert(
     proposals.filter((item) => item.resourceId !== "accessible-10"),
     states,
     3000,
+    "18:00",
+    "18:00",
   ).ok,
   "inaccessible plan passed policy",
 );

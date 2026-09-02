@@ -2,6 +2,8 @@
 
 **Human-governed operations for the agentic web.**
 
+[Live application](https://relay.0rgest.com) · [ChatGPT testing instructions](docs/chatgpt-validation.md) · [MIT license](LICENSE)
+
 > One objective. Three independent provider websites. Six consequential operations. One exact human decision.
 
 Relay coordinates a 42-person flood evacuation across:
@@ -109,6 +111,7 @@ exactly 20 North beds and staged a valid **€2,861** plan.
 
 Hard constraints:
 
+- complete the evacuation by 18:00
 - shelter all 42 residents
 - transport all 42 residents
 - provide at least 9 wheelchair-accessible positions
@@ -156,6 +159,7 @@ The plan hash also binds:
 
 - plan ID and incident ID
 - human-visible summary and rationale
+- machine-evaluated completion deadline
 - plan revision
 - total authority ceiling
 - sorted proposal scopes
@@ -301,7 +305,9 @@ npm run dev
 
 ## Source release gate
 
-From a clean `build/pact-vertical-slice` checkout using the exact pinned toolchain:
+From a clean release checkout using the exact pinned toolchain. The gate defaults
+to `build/pact-vertical-slice`; set `RELAY_RELEASE_BRANCH` to the reviewed branch
+name when releasing from another protected branch:
 
 ```bash
 npm run gate:source
@@ -354,7 +360,7 @@ On the open Relay page, call relay_diagnose_webmcp with:
 Return the raw tool result JSON without summarizing it.
 ```
 
-Do not merge PR #1 until the raw deployed ChatGPT evidence passes.
+Do not freeze or tag a release until the raw deployed ChatGPT evidence passes.
 
 ## Demo recording
 
@@ -366,11 +372,9 @@ The optional proof console is disabled in the judging URL and can be enabled onl
 
 ## Release discipline
 
-- `main` remains frozen
-- release work stays on `build/pact-vertical-slice`
-- PR #1 remains draft until every external gate passes
-- merge through PR #1 only
+- release only a clean, reviewed commit that passes hosted CI and the exact local gate
+- deploy that exact SHA across all four origins and verify immutable provenance
+- keep raw ChatGPT evidence separate from harness evidence
 - do not commit runtime evidence after deployment without rebuilding and revalidating the new SHA
-- create the submission tag only from the exact merged and validated commit
-
-Current recommendation: **DO NOT MERGE**.
+- create the submission tag only from the exact merged, deployed and validated commit
+- after the submission deadline, keep the tagged repository and live deployment frozen through judging

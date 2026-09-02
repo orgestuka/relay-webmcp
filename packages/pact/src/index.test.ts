@@ -44,6 +44,7 @@ const plan = (proposals: ProviderProposal[]): PlanDraft => ({
   incidentId: "FLOOD-RIVERSIDE-042",
   summary: "Evacuation plan",
   rationale: "Satisfies capacity, accessibility and budget constraints.",
+  completionDeadline: "18:00",
   proposals,
   totalCost: proposals.reduce((sum, item) => sum + item.totalCost, 0),
   maxBudget: 3000,
@@ -95,6 +96,7 @@ describe("PACT canonical scope", () => {
 
     expect(await hashPlan({ ...base, summary: "Changed summary" })).not.toBe(baseHash);
     expect(await hashPlan({ ...base, rationale: "Changed rationale" })).not.toBe(baseHash);
+    expect(await hashPlan({ ...base, completionDeadline: "18:01" })).not.toBe(baseHash);
     expect(await hashPlan({ ...base, revision: 2 })).not.toBe(baseHash);
   });
 });

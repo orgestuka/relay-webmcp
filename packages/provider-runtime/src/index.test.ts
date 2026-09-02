@@ -72,6 +72,7 @@ async function approvalFor(
     incidentId: "FLOOD-RIVERSIDE-042",
     summary: "Provider runtime atomicity test",
     rationale: "The exact provider proposals are approved as one local batch.",
+    completionDeadline: "18:00",
     proposals,
     totalCost: proposals.reduce((sum, proposal) => sum + proposal.totalCost, 0),
     maxBudget: maximumCost,

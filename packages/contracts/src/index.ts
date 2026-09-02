@@ -64,6 +64,7 @@ export interface PlanDraft {
   incidentId: string;
   summary: string;
   rationale: string;
+  completionDeadline: string;
   proposals: ProviderProposal[];
   totalCost: number;
   maxBudget: number;

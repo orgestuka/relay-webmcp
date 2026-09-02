@@ -7,6 +7,8 @@ export interface PolicyCheck {
   actual: number;
   required: number;
   relation: ">=" | "<=";
+  actualLabel?: string;
+  requiredLabel?: string;
 }
 
 export interface PolicyResult {
@@ -24,10 +26,19 @@ function quantity(
     .reduce((sum, proposal) => sum + proposal.quantity, 0);
 }
 
+function clockMinutes(value: string): number | null {
+  const match = /^(?:[01]\d|2[0-3]):[0-5]\d$/.exec(value);
+  if (!match) return null;
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
 export function validateEvacuationPlan(
   proposals: ProviderProposal[],
   states: ProviderStateSnapshot[],
   maximumCost: number,
+  completionDeadline: string,
+  requiredDeadline: string,
 ): PolicyResult {
   const shelterState = states.find((state) => state.providerId === "shelter");
   const northAvailability = shelterState
@@ -54,8 +65,23 @@ export function validateEvacuationPlan(
   const accessibleSeats = quantity(proposals, "transit", "accessible-10");
   const evacuationKits = quantity(proposals, "supply", "evac-kit");
   const mobilityKits = quantity(proposals, "supply", "medical-kit");
+  const completionMinutes = clockMinutes(completionDeadline);
+  const requiredMinutes = clockMinutes(requiredDeadline);
+  const deadlinePass = completionMinutes !== null
+    && requiredMinutes !== null
+    && completionMinutes <= requiredMinutes;
 
   const checks: PolicyCheck[] = [
+    {
+      id: "evacuation_deadline",
+      label: "Evacuation completion deadline",
+      pass: deadlinePass,
+      actual: completionMinutes ?? 24 * 60,
+      required: requiredMinutes ?? 0,
+      relation: "<=",
+      actualLabel: completionDeadline,
+      requiredLabel: requiredDeadline,
+    },
     { id: "shelter_capacity", label: "Shelter beds for all residents", pass: shelterBeds >= 42, actual: shelterBeds, required: 42, relation: ">=" },
     { id: "north_reserve", label: "North Shelter strategic reserve", pass: northReserveAfterPlan >= 20, actual: northReserveAfterPlan, required: 20, relation: ">=" },
     { id: "transport_capacity", label: "Transport seats for all residents", pass: transitSeats >= 42, actual: transitSeats, required: 42, relation: ">=" },

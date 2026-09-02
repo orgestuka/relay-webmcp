@@ -401,18 +401,27 @@ function maybeMarkCommitted(): void {
 function validateStageInput(value: unknown): {
   summary: string;
   rationale: string;
+  completionDeadline: string;
   proposalIds: string[];
   maxBudget: number;
 } | null {
   if (!isRecord(value)) return null;
   const summary = plainText(value.summary, 180);
   const rationale = plainText(value.rationale, 500);
-  if (!summary || !rationale || !Array.isArray(value.proposalIds) || value.proposalIds.length === 0) return null;
+  const completionDeadline = plainText(value.completionDeadline, 5);
+  if (
+    !summary
+    || !rationale
+    || !completionDeadline
+    || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(completionDeadline)
+    || !Array.isArray(value.proposalIds)
+    || value.proposalIds.length === 0
+  ) return null;
   const proposalIds = value.proposalIds.filter((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 160);
   if (proposalIds.length !== value.proposalIds.length || new Set(proposalIds).size !== proposalIds.length) return null;
   const requestedBudget = value.maxBudget === undefined ? incident.maximumBudget : value.maxBudget;
   if (typeof requestedBudget !== "number" || !Number.isFinite(requestedBudget) || requestedBudget <= 0) return null;
-  return { summary, rationale, proposalIds, maxBudget: Math.min(requestedBudget, incident.maximumBudget) };
+  return { summary, rationale, completionDeadline, proposalIds, maxBudget: Math.min(requestedBudget, incident.maximumBudget) };
 }
 
 async function stagePlan(input: unknown): Promise<string> {
@@ -426,7 +435,7 @@ async function stagePlan(input: unknown): Promise<string> {
   }
 
   const validated = validateStageInput(input);
-  if (!validated) return toolOutput({ ok: false, code: "INVALID_INPUT", message: "Provide a summary, rationale, unique proposal IDs and a valid budget." });
+  if (!validated) return toolOutput({ ok: false, code: "INVALID_INPUT", message: "Provide a summary, rationale, HH:MM completion deadline, unique proposal IDs and a valid budget." });
 
   const proposals = validated.proposalIds.map((id) => knownProposals.get(id)).filter(Boolean) as ProviderProposal[];
   if (proposals.length !== validated.proposalIds.length) {
@@ -443,6 +452,7 @@ async function stagePlan(input: unknown): Promise<string> {
     incidentId: incident.id,
     summary: validated.summary,
     rationale: validated.rationale,
+    completionDeadline: validated.completionDeadline,
     proposals: structuredClone(proposals),
     totalCost,
     maxBudget: validated.maxBudget,
@@ -471,7 +481,13 @@ async function stagePlan(input: unknown): Promise<string> {
     return toolOutput({ ok: false, code: "BUDGET_EXCEEDED", planId: candidate.planId, totalCost: candidate.totalCost, maxBudget: candidate.maxBudget });
   }
 
-  const policy = validateEvacuationPlan(candidate.proposals, [...providerStates.values()], candidate.maxBudget);
+  const policy = validateEvacuationPlan(
+    candidate.proposals,
+    [...providerStates.values()],
+    candidate.maxBudget,
+    candidate.completionDeadline,
+    incident.deadline,
+  );
   if (!policy.ok) {
     candidate.status = "DRAFT";
     currentPlan = candidate;
@@ -494,6 +510,8 @@ async function stagePlan(input: unknown): Promise<string> {
     status: candidate.status,
     totalCost: candidate.totalCost,
     maxBudget: candidate.maxBudget,
+    completionDeadline: candidate.completionDeadline,
+    policyChecks: policy.checks,
     proposalCount: candidate.proposals.length,
     next: "Call relay_request_approval. The call remains suspended until the human approves or rejects this exact plan.",
   });
@@ -526,7 +544,13 @@ const approvalTool = new DynamicTool({
       renderDynamic();
       return toolOutput({ ok: false, code: "PLAN_STALE", reasons: stale });
     }
-    const policy = validateEvacuationPlan(currentPlan.proposals, [...providerStates.values()], currentPlan.maxBudget);
+    const policy = validateEvacuationPlan(
+      currentPlan.proposals,
+      [...providerStates.values()],
+      currentPlan.maxBudget,
+      currentPlan.completionDeadline,
+      incident.deadline,
+    );
     if (!policy.ok || currentPlan.totalCost > currentPlan.maxBudget) {
       return toolOutput({ ok: false, code: "PLAN_POLICY_FAILED", checks: policy.checks });
     }
@@ -578,7 +602,13 @@ async function approvePending(): Promise<void> {
     renderDynamic();
     return;
   }
-  const policy = validateEvacuationPlan(currentPlan.proposals, [...providerStates.values()], currentPlan.maxBudget);
+  const policy = validateEvacuationPlan(
+    currentPlan.proposals,
+    [...providerStates.values()],
+    currentPlan.maxBudget,
+    currentPlan.completionDeadline,
+    incident.deadline,
+  );
   if (!policy.ok || currentPlan.totalCost > currentPlan.maxBudget) {
     clearPendingApproval(toolOutput({ ok: false, code: "PLAN_POLICY_FAILED", checks: policy.checks }));
     currentPlan.status = "DRAFT";
@@ -709,7 +739,7 @@ function renderEmptyPlan(): string {
 function renderPlan(plan: PlanDraft, stale: string[]): string {
   const amendmentDisabled = Boolean(pendingApproval) || plan.status === "APPROVED" || plan.status === "COMMITTED";
   return `<div class="plan-body">
-    <div class="plan-summary"><div><span>PLAN ${escapeHtml(shortId(plan.planId))}</span><h2>${escapeHtml(plan.summary)}</h2><p>${escapeHtml(plan.rationale)}</p></div><div class="plan-cost"><strong>${money(plan.totalCost)}</strong><span>of ${money(plan.maxBudget)}</span></div></div>
+    <div class="plan-summary"><div><span>PLAN ${escapeHtml(shortId(plan.planId))} · COMPLETE BY ${escapeHtml(plan.completionDeadline)}</span><h2>${escapeHtml(plan.summary)}</h2><p>${escapeHtml(plan.rationale)}</p></div><div class="plan-cost"><strong>${money(plan.totalCost)}</strong><span>of ${money(plan.maxBudget)}</span></div></div>
     ${stale.length ? `<div class="stale-banner"><strong>STATE INVALIDATED</strong>${escapeHtml(stale.join(" "))}</div>` : ""}
     <div class="proposal-table">
       <div class="proposal-row proposal-head"><span>Origin</span><span>Operation</span><span>Version</span><span>Cost</span></div>
@@ -728,8 +758,14 @@ function renderPlan(plan: PlanDraft, stale: string[]): string {
 }
 
 function renderPolicyChecks(plan: PlanDraft): string {
-  const policy = validateEvacuationPlan(plan.proposals, [...providerStates.values()], plan.maxBudget);
-  return `<div class="policy-grid">${policy.checks.map((check) => `<div class="policy-check ${check.pass ? "pass" : "fail"}"><span>${check.pass ? "✓" : "×"}</span><div><b>${escapeHtml(check.label)}</b><small>${check.actual} ${check.relation} ${check.required}</small></div></div>`).join("")}</div>`;
+  const policy = validateEvacuationPlan(
+    plan.proposals,
+    [...providerStates.values()],
+    plan.maxBudget,
+    plan.completionDeadline,
+    incident.deadline,
+  );
+  return `<div class="policy-grid">${policy.checks.map((check) => `<div class="policy-check ${check.pass ? "pass" : "fail"}"><span>${check.pass ? "✓" : "×"}</span><div><b>${escapeHtml(check.label)}</b><small>${escapeHtml(check.actualLabel ?? String(check.actual))} ${check.relation} ${escapeHtml(check.requiredLabel ?? String(check.required))}</small></div></div>`).join("")}</div>`;
 }
 
 function protocolStep(label: string, active: boolean, detail: string): string {
@@ -747,9 +783,10 @@ function renderApprovalModal(): string {
       <div class="approval-icon">◈</div>
       <div class="eyebrow">HUMAN AUTHORITY REQUIRED</div>
       <h2 id="approval-title">Approve exact transaction?</h2>
-      <p>The agent is paused. Approval signs only these operations, provider origins, state versions and costs for two minutes.</p>
+      <p>The agent is paused. Approval signs only these operations, provider origins, state versions, completion deadline and costs for two minutes.</p>
       <div class="approval-hash"><span>PLAN HASH</span><code>${escapeHtml(pendingApproval.payload.planHash)}</code></div>
       <div class="approval-lines">${currentPlan.proposals.map((proposal) => `<div><span>${labelForProvider(proposal.providerId)} · ${escapeHtml(proposal.resourceLabel)}</span><b>${proposal.quantity} ${escapeHtml(proposal.unit)} · ${money(proposal.totalCost)}</b><small>${escapeHtml(proposal.providerOrigin)} · ${escapeHtml(shortId(proposal.proposalId))} · state v${proposal.stateVersion}</small></div>`).join("")}</div>
+      <div class="approval-total"><span>Completion deadline</span><strong>${escapeHtml(currentPlan.completionDeadline)}</strong></div>
       <div class="approval-total"><span>Maximum authority</span><strong>${money(pendingApproval.payload.maximumCost)}</strong></div>
       <div class="approval-actions"><button id="reject-plan" class="reject-button">Reject</button><button id="approve-plan" class="approve-button">Approve & sign PACT token</button></div>
       <small class="approval-footnote">No capacity changes until the agent presents this signed token back to every exact scoped provider.</small>
@@ -788,10 +825,11 @@ async function registerRelayTools(): Promise<void> {
       properties: {
         summary: { type: "string", minLength: 1, maxLength: 180, description: "Concise plan summary." },
         rationale: { type: "string", minLength: 1, maxLength: 500, description: "How the exact operations satisfy every incident constraint." },
+        completionDeadline: { type: "string", pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$", description: `Planned completion time in 24-hour HH:MM format. Must be no later than the incident deadline ${incident.deadline}.` },
         proposalIds: { type: "array", items: { type: "string" }, minItems: 1, uniqueItems: true, description: "Exact proposal IDs returned by provider proposal tools." },
         maxBudget: { type: "number", exclusiveMinimum: 0, maximum: incident.maximumBudget, description: "Plan cost ceiling, never above €5,000." },
       },
-      required: ["summary", "rationale", "proposalIds"],
+      required: ["summary", "rationale", "completionDeadline", "proposalIds"],
       additionalProperties: false,
     },
     annotations: { readOnlyHint: false, untrustedContentHint: true },
@@ -807,7 +845,13 @@ async function registerRelayTools(): Promise<void> {
     execute: () => toolOutput(currentPlan ? {
       plan: currentPlan,
       staleReasons: staleReasons(currentPlan),
-      policy: validateEvacuationPlan(currentPlan.proposals, [...providerStates.values()], currentPlan.maxBudget),
+      policy: validateEvacuationPlan(
+        currentPlan.proposals,
+        [...providerStates.values()],
+        currentPlan.maxBudget,
+        currentPlan.completionDeadline,
+        incident.deadline,
+      ),
       receipts: [...receipts.values()],
     } : { plan: null }),
   });

@@ -64,17 +64,41 @@ function check(result: ReturnType<typeof validateEvacuationPlan>, id: string) {
 
 describe("Riverside evacuation policy", () => {
   it("accepts the canonical six-operation plan", () => {
-    const result = validateEvacuationPlan(validPlan(), states, 3000);
+    const result = validateEvacuationPlan(validPlan(), states, 3000, "18:00", "18:00");
 
     expect(result.ok).toBe(true);
     expect(result.checks.every((candidate) => candidate.pass)).toBe(true);
     expect(check(result, "budget").actual).toBe(2733);
+    expect(check(result, "evacuation_deadline")).toMatchObject({
+      pass: true,
+      actualLabel: "18:00",
+      requiredLabel: "18:00",
+    });
+  });
+
+  it("rejects a plan that completes after the incident deadline", () => {
+    const result = validateEvacuationPlan(validPlan(), states, 3000, "18:01", "18:00");
+
+    expect(check(result, "evacuation_deadline")).toMatchObject({
+      pass: false,
+      actual: 1081,
+      required: 1080,
+      relation: "<=",
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a malformed completion deadline", () => {
+    const result = validateEvacuationPlan(validPlan(), states, 3000, "tomorrow", "18:00");
+
+    expect(check(result, "evacuation_deadline").pass).toBe(false);
+    expect(result.ok).toBe(false);
   });
 
   it("rejects superficially sufficient transport with no accessible seats", () => {
     const plan = validPlan().filter((candidate) => candidate.resourceId !== "accessible-10");
     plan.push(proposal("transit", states[1].origin, "minibus-14", "Minibus 14", 10, "seats", 37));
-    const result = validateEvacuationPlan(plan, states, 3000);
+    const result = validateEvacuationPlan(plan, states, 3000, "18:00", "18:00");
 
     expect(check(result, "transport_capacity").pass).toBe(true);
     expect(check(result, "accessible_transport").pass).toBe(false);
@@ -85,7 +109,7 @@ describe("Riverside evacuation policy", () => {
     const plan = validPlan().filter((candidate) => candidate.providerId !== "shelter");
     plan.push(proposal("shelter", states[0].origin, "north", "North Shelter", 27, "beds", 14));
     plan.push(proposal("shelter", states[0].origin, "east", "East Shelter", 15, "beds", 10));
-    const result = validateEvacuationPlan(plan, states, 3000);
+    const result = validateEvacuationPlan(plan, states, 3000, "18:00", "18:00");
 
     expect(check(result, "shelter_capacity").pass).toBe(true);
     expect(check(result, "north_reserve").actual).toBe(19);
@@ -99,7 +123,7 @@ describe("Riverside evacuation policy", () => {
     const south = proposal("shelter", states[0].origin, "south", "South Shelter", 12, "beds", 9);
     plan.push(north, east, south);
 
-    const beforeCommit = validateEvacuationPlan(plan, states, 3000);
+    const beforeCommit = validateEvacuationPlan(plan, states, 3000, "18:00", "18:00");
     expect(check(beforeCommit, "north_reserve").actual).toBe(34);
 
     const afterCommitStates = structuredClone(states);
@@ -109,21 +133,21 @@ describe("Riverside evacuation policy", () => {
     shelter.resources.find((resource) => resource.id === "east")!.available = 0;
     shelter.resources.find((resource) => resource.id === "south")!.available = 12;
 
-    const afterCommit = validateEvacuationPlan(plan, afterCommitStates, 3000);
+    const afterCommit = validateEvacuationPlan(plan, afterCommitStates, 3000, "18:00", "18:00");
     expect(check(afterCommit, "north_reserve").actual).toBe(34);
     expect(check(afterCommit, "north_reserve").pass).toBe(true);
   });
 
   it("rejects missing mobility support even when general kits are complete", () => {
     const plan = validPlan().filter((candidate) => candidate.resourceId !== "medical-kit");
-    const result = validateEvacuationPlan(plan, states, 3000);
+    const result = validateEvacuationPlan(plan, states, 3000, "18:00", "18:00");
 
     expect(check(result, "evacuation_kits").pass).toBe(true);
     expect(check(result, "mobility_kits").pass).toBe(false);
   });
 
   it("enforces the human authority ceiling independently of resource feasibility", () => {
-    const result = validateEvacuationPlan(validPlan(), states, 2700);
+    const result = validateEvacuationPlan(validPlan(), states, 2700, "18:00", "18:00");
 
     expect(result.checks.filter((candidate) => candidate.id !== "budget").every((candidate) => candidate.pass)).toBe(true);
     expect(check(result, "budget").pass).toBe(false);

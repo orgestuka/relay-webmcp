@@ -42,6 +42,10 @@ function validText(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
+function validClock(value: unknown): value is string {
+  return typeof value === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
 function finiteNonNegative(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
@@ -90,6 +94,7 @@ function isPlanDraft(value: unknown): value is PlanDraft {
     && validText(value.incidentId)
     && validText(value.summary)
     && validText(value.rationale)
+    && validClock(value.completionDeadline)
     && value.proposals.length > 0
     && value.proposals.every(isProviderProposal)
     && finiteNonNegative(value.totalCost)

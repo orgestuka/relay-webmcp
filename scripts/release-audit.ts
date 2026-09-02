@@ -54,6 +54,7 @@ const plan: PlanDraft = {
   incidentId: "FLOOD-RIVERSIDE-042",
   summary: "Canonical evacuation",
   rationale: "All hard constraints pass.",
+  completionDeadline: "18:00",
   proposals,
   totalCost: proposals.reduce((sum, item) => sum + item.totalCost, 0),
   maxBudget: 3000,
@@ -101,9 +102,9 @@ function pass(id: string, evidence: string): void {
   results[id] = { pass: true, evidence };
 }
 
-const policy = validateEvacuationPlan(proposals, states, 3000);
+const policy = validateEvacuationPlan(proposals, states, 3000, "18:00", "18:00");
 assert(policy.ok && plan.totalCost === 2733, "normal plan failed");
-pass("normal_canonical_policy", "7/7 deterministic checks pass at EUR 2733");
+pass("normal_canonical_policy", "8/8 deterministic checks pass at EUR 2733, including completion by 18:00");
 
 const authority = new HumanAuthorityCeiling(5000);
 assert(authority.capStageInput({ maxBudget: 5000 }).maxBudget === 5000, "initial incident authority was not preserved");

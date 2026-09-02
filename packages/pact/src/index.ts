@@ -143,13 +143,14 @@ export function proposalScope(proposal: ProviderProposal): ProposalScope {
 }
 
 export async function hashPlan(
-  plan: Pick<PlanDraft, "planId" | "incidentId" | "summary" | "rationale" | "revision" | "maxBudget" | "proposals">,
+  plan: Pick<PlanDraft, "planId" | "incidentId" | "summary" | "rationale" | "completionDeadline" | "revision" | "maxBudget" | "proposals">,
 ): Promise<string> {
   return sha256({
     planId: plan.planId,
     incidentId: plan.incidentId,
     summary: plan.summary,
     rationale: plan.rationale,
+    completionDeadline: plan.completionDeadline,
     revision: plan.revision,
     maximumCost: plan.maxBudget,
     scopes: plan.proposals.map(proposalScope).sort((a, b) => a.proposalId.localeCompare(b.proposalId)),

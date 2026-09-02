@@ -174,7 +174,7 @@ after global completion
 ### Final evidence
 
 - six proposal IDs
-- seven deterministic policy checks
+- eight deterministic policy checks, including the machine-evaluated completion deadline
 - exact consent sheet
 - signed token returned only after human approval
 - three complete same-origin commit calls

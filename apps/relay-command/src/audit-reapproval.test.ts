@@ -25,6 +25,7 @@ const plan: PlanDraft = {
   incidentId: "FLOOD-RIVERSIDE-042",
   summary: "Reapproval regression",
   rationale: "Same exact plan approved again after the first short-lived token expired.",
+  completionDeadline: "18:00",
   proposals: [proposal],
   totalCost: 10,
   maxBudget: 20,

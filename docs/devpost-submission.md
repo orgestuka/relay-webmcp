@@ -51,6 +51,11 @@ The objective is to evacuate 42 Riverside residents before 18:00 while:
 - providing evacuation and mobility medical kits
 - remaining below the €5,000 incident budget
 
+The agent supplies `completionDeadline` as structured plan data. Relay rejects a
+deadline later than 18:00 as an eighth deterministic policy check, displays the
+accepted deadline in the approval sheet and binds it into the signed PACT plan
+hash. It is therefore enforced authority, not prompt-only context.
+
 The agent selects six non-binding proposals from live provider state under the initial €5,000 authority ceiling. In the first deployed ChatGPT run it chose a safer €2,861 plan that avoided flood-exposed South Shelter while preserving exactly 20 North beds.
 
 Before consent, the human narrows authority from €5,000 to €3,000. Only then does the agent call `relay_request_approval`. The Promise remains suspended while the consent sheet is visible.

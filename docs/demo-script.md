@@ -44,7 +44,7 @@ Hard constraints:
 - create non-binding proposals first
 - do not commit anything before I approve the exact Relay plan
 
-Use the provider tools and stage the returned proposal IDs with relay_stage_plan using maxBudget 5000. Do not tighten the authority ceiling yourself. Then call relay_request_approval and stop for my decision.
+Use the provider tools and stage the returned proposal IDs with relay_stage_plan using maxBudget 5000 and completionDeadline "18:00". Do not tighten the authority ceiling yourself. Then call relay_request_approval and stop for my decision.
 ```
 
 The initial staged authority must visibly be **€5,000**. If ChatGPT stages a lower ceiling, reset. The human performs the narrowing step.
@@ -98,7 +98,7 @@ Then `relay_stage_plan`.
 
 - proposal counters rise
 - exact provider origins and versions appear
-- seven deterministic checks pass
+- eight deterministic checks pass, including the machine-evaluated 18:00 completion deadline
 - total cost is computed from the live allocation and remains below €5,000
 - staged authority is €5,000
 - `relay_request_approval` appears
@@ -175,7 +175,7 @@ Recover the stale Relay plan. Re-query and replace only the invalid Shelter Grid
 ```
 
 The replacement shelter work and recovered total are intentionally adaptive.
-Show that only stale Shelter Grid proposals are replaced, all seven policy checks
+Show that only stale Shelter Grid proposals are replaced, all eight policy checks
 pass and the retained €3,000 ceiling is not increased.
 
 **Narration**

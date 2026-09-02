@@ -141,6 +141,7 @@ async function stageWithDeliveryRetry(proposalIds: string[]): Promise<ToolResult
     const result = await invoke("relay_stage_plan", {
       summary: "Riverside evacuation across three independent providers",
       rationale: "42 shelter beds, 42 transport seats including 10 accessible positions, 42 evacuation kits and 9 mobility medical kits. North Shelter remains untouched and total cost stays below the human ceiling.",
+      completionDeadline: "18:00",
       proposalIds,
       maxBudget: 3000,
     }, true);

@@ -29,6 +29,8 @@ const files = {
   providerRuntime: "packages/provider-runtime/src/index.ts",
   webmcpRuntime: "packages/webmcp-runtime/src/index.ts",
   contracts: "packages/contracts/src/index.ts",
+  pact: "packages/pact/src/index.ts",
+  simulationPolicy: "packages/simulation/src/policy.ts",
   audit: "apps/relay-command/src/audit-consistency.ts",
   releaseGate: "scripts/release-gate.mjs",
   deploymentSmoke: "scripts/deployment-smoke.mjs",
@@ -190,6 +192,8 @@ check(
 const providerRuntime = content.providerRuntime ?? "";
 const webmcpRuntime = content.webmcpRuntime ?? "";
 const contracts = content.contracts ?? "";
+const pact = content.pact ?? "";
+const simulationPolicy = content.simulationPolicy ?? "";
 const commandApp = content.commandApp ?? "";
 const faultInjection = content.faultInjection ?? "";
 const faultInjectionTarget = content.faultInjectionTarget ?? "";
@@ -222,6 +226,18 @@ check(
     && contracts.includes('type: "relay_demo_inject_disruption"'),
   `${files.commandApp}, ${files.faultInjection}, ${files.faultInjectionTarget}, ${files.providerRuntime}, ${files.contracts}`,
   "The approval-sheet disruption must invalidate an allocation from the exact staged shelter plan through the trusted provider boundary.",
+);
+check(
+  "machine_enforced_completion_deadline",
+  contracts.includes("completionDeadline: string")
+    && commandApp.includes('required: ["summary", "rationale", "completionDeadline", "proposalIds"]')
+    && commandApp.includes("candidate.completionDeadline")
+    && simulationPolicy.includes('id: "evacuation_deadline"')
+    && simulationPolicy.includes("completionMinutes <= requiredMinutes")
+    && pact.includes("completionDeadline: plan.completionDeadline")
+    && (content.audit ?? "").includes("validClock(value.completionDeadline)"),
+  `${files.contracts}, ${files.commandApp}, ${files.simulationPolicy}, ${files.pact}, ${files.audit}`,
+  "Relay must require, machine-evaluate, display and cryptographically bind the evacuation completion deadline before approval.",
 );
 check(
   "diagnostic_effective_provider_transport",

@@ -275,7 +275,7 @@ Hard constraints:
 - create non-binding proposals first
 - do not commit anything before I approve the exact Relay plan
 
-Use the provider tools and stage the returned proposal IDs with relay_stage_plan using maxBudget 5000. Do not tighten the authority ceiling yourself. Then call relay_request_approval and stop for my decision.
+Use the provider tools and stage the returned proposal IDs with relay_stage_plan using maxBudget 5000 and completionDeadline "18:00". Do not tighten the authority ceiling yourself. Then call relay_request_approval and stop for my decision.
 ```
 
 Expected initial invariants:
@@ -357,11 +357,11 @@ Save as `05-stale-teardown.json`.
 Send:
 
 ```text
-Recover the stale Relay plan. Re-query and replace only the invalid Shelter Grid proposals. Reuse Transit Ops and Supply Hub proposals only if their provider state versions remain current. Restage with maxBudget 3000 so the human-amended authority remains in force, then request exact approval again.
+Recover the stale Relay plan. Re-query and replace only the invalid Shelter Grid proposals. Reuse Transit Ops and Supply Hub proposals only if their provider state versions remain current. Restage with maxBudget 3000 and completionDeadline "18:00" so the human-amended authority and incident deadline remain in force, then request exact approval again.
 ```
 
 The exact replacement shelter operations and recovered total depend on the
-initial live allocation. Require fresh Shelter Grid proposals, seven passing
+initial live allocation. Require fresh Shelter Grid proposals, eight passing
 policy checks and a total at or below the retained €3,000 ceiling.
 
 Call `relay_get_plan` and confirm the recovered plan still has `maxBudget: 3000`.

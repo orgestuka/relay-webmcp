@@ -26,6 +26,7 @@ function plan(proposals: ProviderProposal[], status: PlanDraft["status"] = "AWAI
     incidentId: "FLOOD-RIVERSIDE-042",
     summary: "Adaptive evacuation",
     rationale: "Use the safest live allocation.",
+    completionDeadline: "18:00",
     proposals,
     totalCost: proposals.reduce((total, item) => total + item.totalCost, 0),
     maxBudget: 3000,

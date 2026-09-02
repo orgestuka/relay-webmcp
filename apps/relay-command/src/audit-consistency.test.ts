@@ -95,6 +95,7 @@ function plan(proposals = canonicalProposals()): PlanDraft {
     incidentId: "FLOOD-RIVERSIDE-042",
     summary: "Canonical evacuation",
     rationale: "All deterministic constraints pass.",
+    completionDeadline: "18:00",
     proposals,
     totalCost: proposals.reduce((sum, item) => sum + item.totalCost, 0),
     maxBudget: 3000,
