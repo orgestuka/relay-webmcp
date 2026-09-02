@@ -31,7 +31,7 @@ Do not add another workflow, provider, explanation section or technical detour.
 ## Exact ChatGPT prompt
 
 ```text
-Use Relay's fixed bridge tools to evacuate all 42 Riverside residents before 18:00.
+Use Relay's available provider bridge tools to evacuate all 42 Riverside residents before 18:00.
 
 Hard constraints:
 - shelter all 42 residents
@@ -81,11 +81,11 @@ relay_bridge_transit_find_accessible_routes
 relay_bridge_supply_check_stock
 ```
 
-Then six non-binding proposals:
+Then six non-binding proposals. Let ChatGPT choose the shelter allocation from
+live capacity and risk details; do not force the reference combination:
 
 ```text
-East Shelter           18 beds
-South Shelter          24 beds
+Shelter Grid           42 total beds, 20+ North beds preserved
 Rapid Bus 32           32 seats
 Access Shuttle 10      10 accessible seats
 Evacuation Kits        42 kits
@@ -99,7 +99,7 @@ Then `relay_stage_plan`.
 - proposal counters rise
 - exact provider origins and versions appear
 - seven deterministic checks pass
-- total cost is €2,733
+- total cost is computed from the live allocation and remains below €5,000
 - staged authority is €5,000
 - `relay_request_approval` appears
 - all top-level provider commit wrappers remain absent
@@ -146,12 +146,12 @@ Do not approve.
 Click:
 
 ```text
-Change shelter capacity
+Disrupt active shelter
 ```
 
 **Visual proof**
 
-- South Shelter falls from 24 to 12
+- the largest shelter allocation in the exact staged plan becomes insufficient
 - Shelter Grid advances v1 → v2
 - stale shelter proposals disappear
 - `relay_request_approval` disappears
@@ -174,19 +174,9 @@ Ask ChatGPT:
 Recover the stale Relay plan. Re-query and replace only the invalid Shelter Grid proposals. Reuse Transit Ops and Supply Hub proposals only if their provider state versions remain current. Restage with the human-amended €3,000 ceiling, then request exact approval again.
 ```
 
-Expected replacement shelter work:
-
-```text
-East Shelter   18 beds
-South Shelter  12 beds
-North Shelter  12 beds
-```
-
-Recovered total:
-
-```text
-€2,793
-```
+The replacement shelter work and recovered total are intentionally adaptive.
+Show that only stale Shelter Grid proposals are replaced, all seven policy checks
+pass and the retained €3,000 ceiling is not increased.
 
 **Narration**
 
@@ -264,14 +254,14 @@ The final cut must contain:
 - exact release identity pass
 - three independent provider websites
 - six initial non-binding proposals
-- €2,733 initial plan cost
+- a valid live-computed initial plan cost
 - €5,000 initial authority ceiling
 - top-level commit wrappers absent before consent
 - human amendment from €5,000 to €3,000
 - suspended approval call
 - Shelter Grid v1 → v2
 - stale plan state and capability teardown
-- recovered €2,793 plan under the retained €3,000 ceiling
+- a recovered valid plan under the retained €3,000 ceiling
 - exact approval sheet
 - exactly three commit wrappers appearing after consent
 - three independent provider commit calls

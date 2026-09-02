@@ -107,6 +107,13 @@ export interface RelaySessionInitMessage {
   commandOrigin: string;
 }
 
+export interface ProviderDisruptionMessage {
+  type: "relay_demo_inject_disruption";
+  providerId: ProviderId;
+  resourceId: string;
+  newAvailability: number;
+}
+
 export const PROVIDER_RPC_PROTOCOL = "relay.provider-rpc.v1" as const;
 
 export interface ProviderRpcProbeMessage {

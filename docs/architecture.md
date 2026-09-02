@@ -87,7 +87,7 @@ A provider commit implementation can become locally available once trusted curre
 
 ### 3.3 Agent authority plane
 
-Relay Command mirrors exact provider capabilities through a fixed bridge because an agent client may not directly surface tools supplied only by embedded documents.
+Relay Command mirrors exact provider capabilities through an origin-locked compatibility bridge because an agent client may not directly surface tools supplied only by embedded documents.
 
 Native cross-origin `getTools()`/`executeTool()` is preferred. If the client
 implements only document-bound WebMCP, providers advertise the same locally
@@ -269,7 +269,7 @@ Every proposal captures the exact version observed at creation. A v4 proposal ca
 
 Any provider state advance invalidates all outstanding proposals from the previous version. The rule is intentionally coarse: simple safe invalidation is preferred over maximum concurrency for the competition proof.
 
-Proposals expire after five minutes. Expiry removes proposals and revokes provider commit implementations. The fixed bridge subsequently removes corresponding wrappers.
+Proposals expire after five minutes. Expiry removes proposals and revokes provider commit implementations. The compatibility bridge subsequently removes corresponding wrappers.
 
 `AbortSignal` drives WebMCP revocation. The runtime handles concurrent enable calls and disable-during-registration races so obsolete tools cannot reappear.
 

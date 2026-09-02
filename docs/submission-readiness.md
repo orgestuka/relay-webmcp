@@ -8,9 +8,9 @@ Integration path: **draft PR #1 only**
 
 # Current recommendation
 
-## **SOURCE AND PACKAGED RUNTIME PASS — DO NOT MERGE YET**
+## **DEPLOYED CHATGPT PRE-CONSENT PASS — KEEP PRIVATE AND DO NOT MERGE YET**
 
-The exact branch passes the clean source release gate and the production image builds and serves all four applications under the Compose read-only security profile. The remaining blockers are external: push/hosted CI visibility, four public HTTPS origins, actual ChatGPT validation, rehearsals and the public submission video.
+Release `f1f1ea5e447d847f0c525737df68256ddebbb17e` is deployed across four HTTPS origins. Its clean source gate, hosted CI, production smoke, ChatGPT release identity, executable provider diagnostic and complete pre-consent plan all passed. The repository intentionally remains private. The next candidate adds a plan-aware approval-sheet disruption and must be gated, committed, deployed and revalidated before the full consent/stale/recovery/commit recording.
 
 ## Status vocabulary
 
@@ -47,30 +47,33 @@ These controls pass source verification. Public edge behavior and actual ChatGPT
 | --- | --- | --- |
 | Committed `package-lock.json` | **PASS** | Lockfile v3 is committed and consumed with npm 10.9.2. |
 | Clean `npm ci` | **PASS** | Executed by the clean source gate. |
-| Full `npm run verify` | **PASS** | 81 release-contract checks, 75 tests, typecheck, smoke and release audits pass. |
+| Full `npm run verify` | **PASS** | The deployed `f1f1ea5…` release passed 88 release-contract checks, 79 tests, typecheck, smoke and release audits. Rerun for the next candidate. |
 | Four Vite production builds | **PASS** | All four production bundles build inside the local gate and production image. |
 | Production Docker image | **PASS** | The image verifies before runtime and all four app modes pass direct container health, headers and release-manifest smoke under the read-only Compose profile. |
-| Hosted GitHub CI | **BLOCKED** | The latest local commit must be pushed and a runner-backed workflow result observed. |
-| Full public Compose stack | **BLOCKED** | Requires deployment configuration, public DNS and certificate issuance. |
-| Four public HTTPS origins and DNS | **BLOCKED** | Requires domain and infrastructure control. |
-| Actual ChatGPT built-in-browser proof | **BLOCKED** | Requires the deployed origins and a human-operated ChatGPT browser context. |
-| Rehearsal and video | **BLOCKED** | Must use the validated deployment. |
+| Hosted GitHub CI | **PASS** | Push and pull-request runs passed for deployed SHA `f1f1ea5…`. |
+| Full public Compose stack | **PASS** | Four healthy application containers run behind the existing isolated Caddy edge. |
+| Four public HTTPS origins and DNS | **PASS** | Relay, Shelter Grid, Transit Ops and Supply Hub pass production smoke. |
+| ChatGPT identity and diagnostic | **PASS** | Release identity and all three executable provider read probes returned `ok: true`. |
+| ChatGPT pre-consent plan | **PASS** | ChatGPT staged six non-binding proposals at €2,861, passed every policy check and exposed no commit capability. |
+| Full stale/recovery/commit/audit path | **BLOCKED** | Must be rerun after the plan-aware disruption candidate is deployed. |
+| Repository visibility | **BLOCKED** | Intentionally private until the user performs the final publication step. |
+| Rehearsal and video | **BLOCKED** | Requires the final validated release and three reliable rehearsals. |
 
 ## Exact remaining sequence
 
 ```text
-push exact gated commit and observe hosted CI
-→ configure four DNS names
-→ clean npm run gate:release
+finish plan-aware disruption candidate
+→ clean npm run gate:source
+→ commit, push branch and observe hosted CI
+→ deploy exact candidate SHA and run the four-origin release gate
 → relay_get_release_identity
 → relay_diagnose_webmcp with read probes
-→ canonical ChatGPT transaction
 → stale/recovery ChatGPT transaction
 → partial-commit recovery drill
 → repeated rehearsals
 → public video
-→ visibility requirement
-→ PR #1 merge
+→ merge PR #1 without squashing away release provenance
+→ make the repository public and verify LICENSE detection
 → validate merged SHA
 → submission tag
 ```

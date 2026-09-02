@@ -109,7 +109,7 @@ permanent Relay registration pass
 ChatGPT visibility pass
 all three provider discovery passes
 all three semantic read execution passes
-fixed bridge initial registration and visibility passes
+origin-locked compatibility bridge initial registration and visibility passes
 ```
 
 A listed tool that throws, returns null, invalid JSON or semantic `{ "ok": false }` fails.
@@ -130,7 +130,7 @@ Evacuate all 42 Riverside residents before 18:00 while:
 
 ### Initial expected plan
 
-Six proposals, total cost **€2,733**, staged under the incident's **€5,000** ceiling.
+Six live proposals produce a policy-valid plan staged under the incident's **€5,000** ceiling. The exact shelter allocation and total may vary as the agent reasons over provider details.
 
 ### Required human action
 
@@ -189,7 +189,7 @@ after global completion
 1. Build the canonical plan at €5,000.
 2. Human narrows authority to €3,000.
 3. Call `relay_request_approval`.
-4. While the call is suspended, change Shelter Grid capacity.
+4. While the call is suspended, use **Disrupt active shelter**.
 
 ### Required result
 
@@ -206,15 +206,9 @@ after global completion
 
 The agent replaces only invalid shelter work, reuses other proposals only if current and restages under `maxBudget: 3000`.
 
-Expected recovered shelter work:
-
-```text
-East Shelter    18 beds
-South Shelter   12 beds
-North Shelter   12 beds
-```
-
-Recovered total: **€2,793**.
+The recovered shelter work and total depend on the initial live allocation.
+Pass when every stale shelter proposal is replaced, all policy checks pass and
+the retained €3,000 authority ceiling is not increased.
 
 ## 6. Human rejection evaluation
 

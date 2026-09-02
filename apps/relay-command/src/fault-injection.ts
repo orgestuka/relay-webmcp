@@ -1,11 +1,12 @@
 import "./fault-injection.css";
+import { readCurrentPlanSnapshot } from "./command-app";
+import { shelterDisruptionForPlan } from "./fault-injection-target";
 
 const shelterOrigin = new URL(
   import.meta.env.VITE_SHELTER_ORIGIN || "http://localhost:5174",
   window.location.href,
 ).origin;
 
-const message = Object.freeze({ type: "relay_demo_inject_disruption" as const });
 const hint = "During CONSENT, use the red demo control inside the approval sheet to prove stale plans fail closed.";
 
 function updateProofHint(): void {
@@ -33,13 +34,13 @@ function injectConsentControl(): void {
   label.textContent = "DEMO FAULT INJECTION";
 
   const detail = document.createElement("small");
-  detail.textContent = "Simulate a concurrent Shelter Grid capacity change while the agent is paused. This calls the provider's real one-shot state transition.";
+  detail.textContent = "Make the staged plan unsafe by reducing its largest live Shelter Grid allocation. The provider advances state and revokes every old quote.";
 
   const button = document.createElement("button");
   button.type = "button";
   button.className = "fault-button";
-  button.textContent = "Change shelter capacity";
-  button.setAttribute("aria-label", "Inject a real Shelter Grid capacity disruption");
+  button.textContent = "Disrupt active shelter";
+  button.setAttribute("aria-label", "Disrupt the largest shelter allocation in the staged plan");
 
   button.addEventListener("click", () => {
     const frame = document.querySelector<HTMLIFrameElement>('iframe[data-provider="shelter"]');
@@ -48,9 +49,15 @@ function injectConsentControl(): void {
       return;
     }
 
-    frame.contentWindow.postMessage(message, shelterOrigin);
+    const target = shelterDisruptionForPlan(readCurrentPlanSnapshot());
+    if (!target) {
+      button.textContent = "No active shelter allocation";
+      return;
+    }
+
+    frame.contentWindow.postMessage(target.message, shelterOrigin);
     button.disabled = true;
-    button.textContent = "Disruption requested";
+    button.textContent = `${target.resourceLabel} disruption requested`;
   });
 
   copy.append(label, detail);

@@ -21,6 +21,9 @@ const files = {
   releaseIdentity: "apps/relay-command/src/release-identity.ts",
   bridge: "apps/relay-command/src/compatibility-bridge.ts",
   providerRpcClient: "apps/relay-command/src/provider-rpc-client.ts",
+  commandApp: "apps/relay-command/src/command-app.ts",
+  faultInjection: "apps/relay-command/src/fault-injection.ts",
+  faultInjectionTarget: "apps/relay-command/src/fault-injection-target.ts",
   capabilitySurface: "apps/relay-command/src/capability-surface.ts",
   diagnostics: "apps/relay-command/src/release-diagnostics.ts",
   providerRuntime: "packages/provider-runtime/src/index.ts",
@@ -187,6 +190,9 @@ check(
 const providerRuntime = content.providerRuntime ?? "";
 const webmcpRuntime = content.webmcpRuntime ?? "";
 const contracts = content.contracts ?? "";
+const commandApp = content.commandApp ?? "";
+const faultInjection = content.faultInjection ?? "";
+const faultInjectionTarget = content.faultInjectionTarget ?? "";
 check(
   "provider_rpc_provider_boundary",
   providerRuntime.includes("event.source !== window.parent || event.origin !== relayOrigin")
@@ -203,6 +209,19 @@ check(
     && contracts.includes('PROVIDER_RPC_PROTOCOL = "relay.provider-rpc.v1"'),
   `${files.webmcpRuntime}, ${files.contracts}`,
   "Native WebMCP and iframe fallback must share one provider-owned tool implementation and one versioned protocol.",
+);
+check(
+  "plan_aware_demo_disruption",
+  commandApp.includes("readCurrentPlanSnapshot")
+    && faultInjection.includes("shelterDisruptionForPlan(readCurrentPlanSnapshot())")
+    && faultInjection.includes("frame.contentWindow.postMessage(target.message, shelterOrigin)")
+    && faultInjectionTarget.includes('proposal.providerId !== "shelter"')
+    && faultInjectionTarget.includes("allocation.quantity - 1")
+    && providerRuntime.includes("isProviderDisruptionMessage(event.data, seed.providerId)")
+    && providerRuntime.includes("event.source !== window.parent || event.origin !== relayOrigin")
+    && contracts.includes('type: "relay_demo_inject_disruption"'),
+  `${files.commandApp}, ${files.faultInjection}, ${files.faultInjectionTarget}, ${files.providerRuntime}, ${files.contracts}`,
+  "The approval-sheet disruption must invalidate an allocation from the exact staged shelter plan through the trusted provider boundary.",
 );
 check(
   "diagnostic_effective_provider_transport",

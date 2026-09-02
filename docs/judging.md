@@ -40,10 +40,10 @@ Do not begin with architecture diagrams, code or deployment.
 
 The strongest judging sequence is:
 
-1. six proposals create a valid €2,733 plan at €5,000 authority
+1. six live proposals create a valid plan at €5,000 authority
 2. human narrows authority to €3,000
 3. approval call suspends
-4. Shelter Grid changes v1 → v2
+4. the exact staged plan's largest shelter allocation is disrupted and Shelter Grid changes v1 → v2
 5. plan becomes `STALE`
 6. pending approval resolves without a token
 7. commit capability remains absent

@@ -56,6 +56,10 @@ const receipts = new Map<string, CommitReceipt>();
 const eventLog: EventRecord[] = [];
 const providerFrames = new Map<ProviderId, HTMLIFrameElement>();
 
+export function readCurrentPlanSnapshot(): PlanDraft | null {
+  return currentPlan ? structuredClone(currentPlan) : null;
+}
+
 function escapeHtml(value: unknown): string {
   return String(value)
     .replaceAll("&", "&amp;")

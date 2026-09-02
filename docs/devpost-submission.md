@@ -51,11 +51,11 @@ The objective is to evacuate 42 Riverside residents before 18:00 while:
 - providing evacuation and mobility medical kits
 - remaining below the €5,000 incident budget
 
-The agent stages six non-binding proposals costing €2,733 under the initial €5,000 authority ceiling.
+The agent selects six non-binding proposals from live provider state under the initial €5,000 authority ceiling. In the first deployed ChatGPT run it chose a safer €2,861 plan that avoided flood-exposed South Shelter while preserving exactly 20 North beds.
 
 Before consent, the human narrows authority from €5,000 to €3,000. Only then does the agent call `relay_request_approval`. The Promise remains suspended while the consent sheet is visible.
 
-Before approval, Shelter Grid loses capacity. Its state version advances, old shelter proposals become invalid, the plan becomes stale and no commit wrapper is exposed.
+Before approval, Relay's demo control reduces the largest shelter allocation in the exact staged plan. Shelter Grid advances its state version, old shelter proposals become invalid, the plan becomes stale and no commit wrapper is exposed.
 
 The agent recovers with fresh shelter proposals while preserving the human-amended €3,000 ceiling. The human approves the revised exact scopes. Only then do exactly three origin-bound commit wrappers appear. The providers independently verify and commit, Relay records six receipts and audit bundle v2 proves exact equality between the final plan, matching approval scopes, provider receipts and deployed release identity.
 
@@ -78,6 +78,8 @@ Relay uses imperative registration, `allow="tools"`, `exposedTo`, `getTools({ fr
 
 Relay preserves the independent provider documents and adds a strict top-level capability bridge:
 
+- native cross-origin WebMCP remains the preferred transport
+- an exact-origin, exact-frame RPC transport covers clients that omit iframe WebMCP
 - each wrapper is hard-bound to one origin and one provider tool name
 - wrappers have explicit schemas
 - no arbitrary execute-any capability exists
@@ -141,7 +143,7 @@ Production Relay fails closed without an exact commit SHA. The compiled applicat
 ## Accomplishments
 
 - one objective spanning four independent WebMCP documents
-- fixed ChatGPT-compatible provider bridge
+- native-first, origin-locked ChatGPT-compatible provider bridge
 - no top-level commit capability before exact human consent
 - live discovery and semantic execution diagnostics
 - dynamic capability creation and teardown evidence
@@ -185,20 +187,20 @@ TypeScript, Vite, WebMCP, Web Crypto API, ECDSA P-256, Vitest, cross-origin ifra
 
 ## Links
 
-- Live Relay Command: `[RELAY_URL]`
-- Shelter Grid: `[SHELTER_URL]`
-- Transit Ops: `[TRANSIT_URL]`
-- Supply Hub: `[SUPPLY_URL]`
-- Public repository: `[REPOSITORY_URL]`
+- Live Relay Command: `https://relay.0rgest.com`
+- Shelter Grid: `https://relay-shelter.0rgest.com`
+- Transit Ops: `https://relay-transit.0rgest.com`
+- Supply Hub: `https://relay-supply.0rgest.com`
+- Public repository: `https://github.com/ValorSeven/relay-webmcp` (make public only at submission freeze)
 - Public video: `[VIDEO_URL]`
 
 ## Submission freeze checklist
 
-- [ ] exact branch passes `npm run gate:source`
-- [ ] four HTTPS origins pass `npm run gate:release -- --env .env.deploy`
-- [ ] `relay_get_release_identity` passes in ChatGPT
-- [ ] raw actual ChatGPT diagnostic passes
-- [ ] commit wrappers are absent before human approval
+- [x] deployed baseline branch passed `npm run gate:source`
+- [x] deployed baseline four HTTPS origins passed production smoke
+- [x] `relay_get_release_identity` passed in ChatGPT
+- [x] raw actual ChatGPT diagnostic passed
+- [x] commit wrappers were absent before human approval
 - [ ] initial plan visibly stages at €5,000 authority
 - [ ] human visibly narrows authority to €3,000
 - [ ] full stale/recovery/approval/commit path passes in ChatGPT

@@ -2,6 +2,7 @@ import type {
   ApprovalToken,
   CommitReceipt,
   ProviderId,
+  ProviderDisruptionMessage,
   ProviderProposal,
   ProviderRpcProbeMessage,
   ProviderRpcRequestMessage,
@@ -121,6 +122,19 @@ function isProviderRpcRequest(value: unknown, providerId: ProviderId): value is 
   }
 }
 
+function isProviderDisruptionMessage(
+  value: unknown,
+  providerId: ProviderId,
+): value is ProviderDisruptionMessage {
+  if (!isRecord(value)) return false;
+  return Object.keys(value).length === 4
+    && value.type === "relay_demo_inject_disruption"
+    && value.providerId === providerId
+    && cleanText(value.resourceId, 80) !== null
+    && Number.isSafeInteger(value.newAvailability)
+    && (value.newAvailability as number) >= 0;
+}
+
 function validateSeed(seed: ProviderSeed): void {
   if (!seed.resources.length) throw new Error(`${seed.providerName} has no resources.`);
   const ids = new Set<string>();
@@ -234,7 +248,7 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
         </section>
       </main>`;
 
-    app.querySelector<HTMLButtonElement>("#inject-disruption")?.addEventListener("click", injectDisruption);
+    app.querySelector<HTMLButtonElement>("#inject-disruption")?.addEventListener("click", () => injectDisruption());
   };
 
   const broadcastState = (): void => {
@@ -385,11 +399,15 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
     postRpcCapabilities();
   };
 
-  function injectDisruption(): void {
+  function injectDisruption(request?: ProviderDisruptionMessage): void {
     if (disruptionInjected) return;
-    const target = resources.find((resource) => resource.id === seed.disruption.resourceId);
+    const resourceId = request?.resourceId ?? seed.disruption.resourceId;
+    const requestedAvailability = request?.newAvailability ?? seed.disruption.newAvailability;
+    const target = resources.find((resource) => resource.id === resourceId);
     if (!target) return;
-    target.available = Math.max(0, Math.floor(seed.disruption.newAvailability));
+    const nextAvailability = Math.max(0, Math.floor(requestedAvailability));
+    if (nextAvailability >= target.available) return;
+    target.available = nextAvailability;
     disruptionInjected = true;
     stateVersion += 1;
     proposals.clear();
@@ -595,6 +613,11 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
       if (sessionChanged) proposals.clear();
       void syncCommitTool();
       render();
+      return;
+    }
+
+    if (isProviderDisruptionMessage(event.data, seed.providerId)) {
+      if (trust) injectDisruption(event.data);
       return;
     }
 

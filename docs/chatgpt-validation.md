@@ -47,11 +47,11 @@ Record:
 - exact `git rev-parse HEAD`
 - date and visible ChatGPT build when available
 - that the caller was ChatGPT's built-in browser
-- normal fixed-bridge mode or `?direct=1`
+- normal compatibility-bridge mode or `?direct=1`
 
 Ordinary Chrome, Playwright and `?proof=1` remain harness evidence only.
 
-## 2. Why Relay uses a fixed top-level bridge
+## 2. Why Relay uses an origin-locked compatibility bridge
 
 ChatGPT may not expose tools supplied only by embedded provider documents directly to the agent client.
 
@@ -84,7 +84,7 @@ WebMCP LIVE
 signed Relay session on each provider
 ```
 
-The app deliberately waits for the initial fixed read/proposal bridge surface before registering diagnostics. A warning in the console means the initial provider surface did not stabilize within the bounded readiness window and must be investigated before continuing.
+The app deliberately waits for the initial compatibility read/proposal bridge surface before registering diagnostics. A warning in the console means the initial provider surface did not stabilize within the bounded readiness window and must be investigated before continuing.
 
 ## 4. Prove exact deployed release identity
 
@@ -208,7 +208,7 @@ Save the raw output as `02-initial-diagnostic.json`.
 
 ## 6. Prove one real proposal per provider
 
-Use only the fixed top-level read and proposal tools:
+Use only the exact top-level read and proposal bridge tools:
 
 ```text
 relay_bridge_shelter_find_capacity
@@ -262,7 +262,7 @@ Save the raw calls as `03-provider-proposal-probes.json`, then click **Reset sce
 Send exactly:
 
 ```text
-Use Relay's fixed bridge tools to evacuate all 42 Riverside residents before 18:00.
+Use Relay's available provider bridge tools to evacuate all 42 Riverside residents before 18:00.
 
 Hard constraints:
 - shelter all 42 residents
@@ -278,18 +278,18 @@ Hard constraints:
 Use the provider tools and stage the returned proposal IDs with relay_stage_plan using maxBudget 5000. Do not tighten the authority ceiling yourself. Then call relay_request_approval and stop for my decision.
 ```
 
-Expected initial plan:
+Expected initial invariants:
 
 ```text
-East Shelter           18 beds                 €180
-South Shelter          24 beds                 €216
-Rapid Bus 32           32 seats                €928
-Access Shuttle 10      10 accessible seats     €680
-Evacuation Kits        42 kits                 €504
-Mobility Medical Kits   9 kits                 €225
-Total                                          €2,733
-Initial authority ceiling                        €5,000
+42 shelter beds with at least 20 North beds still unallocated
+42 transport seats with at least 9 accessible positions
+42 evacuation kits and 9 mobility medical kits
+total cost <= €5,000
+initial authority ceiling = €5,000
 ```
+
+Do not force a particular shelter combination. The agent should reason from live
+capacity and provider details. Record the exact chosen operations and cost.
 
 If `relay_get_plan` shows a ceiling below €5,000 before the human amendment, reset. The human, not the agent, must perform the narrowing step.
 
@@ -328,13 +328,13 @@ Only then let ChatGPT call `relay_request_approval`.
 While the approval call is suspended, click:
 
 ```text
-Change shelter capacity
+Disrupt active shelter
 ```
 
 Required result:
 
 - Shelter Grid advances from v1 to v2
-- South Shelter falls from 24 to 12 available beds
+- the largest shelter allocation in the staged plan becomes insufficient
 - old Shelter Grid proposals are deleted
 - the plan becomes `STALE`
 - the pending approval call resolves with a stale-plan failure
@@ -360,19 +360,9 @@ Send:
 Recover the stale Relay plan. Re-query and replace only the invalid Shelter Grid proposals. Reuse Transit Ops and Supply Hub proposals only if their provider state versions remain current. Restage with maxBudget 3000 so the human-amended authority remains in force, then request exact approval again.
 ```
 
-Expected replacement shelter operations:
-
-```text
-East Shelter    18 beds
-South Shelter   12 beds
-North Shelter   12 beds
-```
-
-Expected recovered total:
-
-```text
-€2,793
-```
+The exact replacement shelter operations and recovered total depend on the
+initial live allocation. Require fresh Shelter Grid proposals, seven passing
+policy checks and a total at or below the retained €3,000 ceiling.
 
 Call `relay_get_plan` and confirm the recovered plan still has `maxBudget: 3000`.
 
@@ -511,7 +501,7 @@ https://<RELAY_HOST>/?direct=1
 
 Call `relay_diagnose_webmcp`.
 
-This records whether that ChatGPT build directly exposes descendant provider tools. It is not the primary path and does not replace fixed-bridge evidence.
+This records whether that ChatGPT build directly exposes descendant provider tools. It is not the primary path and does not replace compatibility-bridge evidence.
 
 ## 16. Final pass checklist
 

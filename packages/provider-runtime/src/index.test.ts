@@ -388,4 +388,32 @@ describe("provider runtime release invariants", () => {
       await harness.close();
     }
   });
+
+  it("accepts a plan-aware disruption only from the exact trusted Relay parent", async () => {
+    const harness = await createHarness();
+    try {
+      const before = await harness.call("shelter_find_capacity", { minimum: 0 });
+      expect(resourceAvailability(before, "north")).toBe(46);
+
+      const request = {
+        type: "relay_demo_inject_disruption",
+        providerId: "shelter",
+        resourceId: "north",
+        newAvailability: 25,
+      };
+      harness.dispatchMessage(request, { origin: "https://evil.example.test" });
+      await flushTasks();
+      const afterWrongOrigin = await harness.call("shelter_find_capacity", { minimum: 0 });
+      expect(afterWrongOrigin.stateVersion).toBe(1);
+      expect(resourceAvailability(afterWrongOrigin, "north")).toBe(46);
+
+      harness.dispatchMessage(request);
+      await flushTasks();
+      const disrupted = await harness.call("shelter_find_capacity", { minimum: 0 });
+      expect(disrupted.stateVersion).toBe(2);
+      expect(resourceAvailability(disrupted, "north")).toBe(25);
+    } finally {
+      await harness.close();
+    }
+  });
 });

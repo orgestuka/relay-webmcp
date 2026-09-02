@@ -60,7 +60,7 @@ Relay uses WebMCP as a capability system, not as a button alias.
 
 ## ChatGPT compatibility architecture
 
-Some agent clients do not surface tools supplied only by embedded provider documents. Relay therefore preserves the providers as independent WebMCP documents and exposes a **strict fixed top-level bridge** from Relay Command.
+Some agent clients do not surface tools supplied only by embedded provider documents. Relay therefore preserves the providers as independent WebMCP documents and exposes a **strict origin-locked compatibility bridge** from Relay Command.
 
 Each wrapper is hard-bound to:
 
@@ -88,9 +88,9 @@ Relay allows a bounded five-second cold-start window for the permanent read/prop
 
 Use the normal Relay URL for judging. `?direct=1` disables the bridge only for controlled compatibility diagnosis.
 
-## Canonical scenario
+## Reference scenario
 
-The initial valid plan contains six operations:
+One valid plan contains six operations:
 
 | Provider | Operation | Quantity | Cost |
 | --- | --- | ---: | ---: |
@@ -101,6 +101,11 @@ The initial valid plan contains six operations:
 | Supply Hub | Evacuation Kits | 42 kits | €504 |
 | Supply Hub | Mobility Medical Kits | 9 kits | €225 |
 |  | **Total** |  | **€2,733** |
+
+The allocation is intentionally not hard-coded. ChatGPT may choose another valid
+combination from live provider details. In the first deployed ChatGPT run it
+avoided flood-exposed South Shelter, used 26 North and 16 East beds, preserved
+exactly 20 North beds and staged a valid **€2,861** plan.
 
 Hard constraints:
 
@@ -118,7 +123,7 @@ Hard constraints:
 1. The agent stages a valid plan at the incident's €5,000 ceiling.
 2. The human narrows authority to €3,000.
 3. The agent calls `relay_request_approval` and pauses.
-4. Shelter capacity changes while consent is pending.
+4. The demo control reduces the largest shelter allocation in the exact staged plan while consent is pending.
 5. Shelter Grid advances its state version and deletes old proposals.
 6. The plan becomes `STALE` and the suspended approval resolves without authority.
 7. No top-level commit capability exists.
@@ -127,15 +132,10 @@ Hard constraints:
 10. Exact approval creates only the three provider commit wrappers.
 11. Providers independently verify, commit and issue receipts.
 
-Recovered shelter work:
-
-```text
-East Shelter    18 beds
-South Shelter   12 beds
-North Shelter   12 beds
-```
-
-Recovered total: **€2,793**. North Shelter retains 34 beds.
+Recovered shelter work and total depend on the agent's initial live allocation.
+The invariants are fixed: all stale Shelter Grid proposals are replaced, still-live
+Transit Ops and Supply Hub proposals may be reused, every policy check passes and
+the human-amended **€3,000** ceiling remains in force.
 
 ## PACT authorization
 
@@ -202,7 +202,7 @@ Returns:
 - Relay runtime and client-visible tool registration
 - provider-origin discovery state
 - semantic read-only execution probes
-- fixed bridge status
+- effective provider-bridge transport and status
 - `toolchange` capture history
 
 ### `relay_get_audit_bundle`
