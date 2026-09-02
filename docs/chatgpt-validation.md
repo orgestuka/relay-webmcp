@@ -57,10 +57,12 @@ ChatGPT may not expose tools supplied only by embedded provider documents direct
 
 Relay preserves the providers as independent WebMCP documents, then Relay Command:
 
-1. discovers an exact provider capability with `getTools({ fromOrigins })`
-2. registers a fixed wrapper for one exact origin and tool name
-3. invokes only that underlying provider tool through `executeTool()`
-4. removes the wrapper when the capability or human authority is no longer valid
+1. prefers exact provider discovery with `getTools({ fromOrigins })`
+2. falls back to an exact-origin, exact-frame provider RPC capability announcement when the client omits iframe WebMCP
+3. registers a fixed wrapper for one exact origin and tool name
+4. invokes the same provider-owned implementation through native `executeTool()` or the versioned fallback
+5. rejects wrong-origin, wrong-frame, oversized, timed-out and replayed fallback requests
+6. removes the wrapper when the capability or human authority is no longer valid
 
 There is no generic origin parameter, arbitrary tool-name parameter or execute-any capability. Provider-side PACT verification remains authoritative.
 
@@ -142,7 +144,7 @@ Required fields:
 ```json
 {
   "ok": true,
-  "compatibilityMode": "fixed-top-level-bridge-active",
+  "compatibilityMode": "origin-locked-provider-bridge-active",
   "provenance": {
     "required": true,
     "compiledReleaseSha": "<exact commit>",
@@ -186,6 +188,9 @@ Every provider entry must contain:
 
 ```json
 {
+  "nativeDiscoveryPass": false,
+  "bridgeVisibilityPass": true,
+  "effectiveTransport": "relay-provider-bridge",
   "discoveryPass": true,
   "executionPass": true,
   "readProbe": {

@@ -89,6 +89,13 @@ A provider commit implementation can become locally available once trusted curre
 
 Relay Command mirrors exact provider capabilities through a fixed bridge because an agent client may not directly surface tools supplied only by embedded documents.
 
+Native cross-origin `getTools()`/`executeTool()` is preferred. If the client
+implements only document-bound WebMCP, providers advertise the same locally
+guarded implementations through `relay.provider-rpc.v1`. Relay accepts those
+messages only from the configured origin and matching iframe window, uses exact
+target origins, bounds payloads and execution time, and rejects replayed request
+IDs. Business logic and inventory remain inside each provider origin.
+
 Each wrapper is bound to:
 
 ```text

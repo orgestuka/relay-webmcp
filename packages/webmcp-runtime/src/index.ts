@@ -31,7 +31,7 @@ interface ModelContextLike {
   addEventListener?: EventTarget["addEventListener"];
   registerTool(tool: ToolDefinition, options?: { signal?: AbortSignal; exposedTo?: string[] }): Promise<void>;
   getTools?(options?: { fromOrigins?: string[] }): Promise<RegisteredTool[]>;
-  executeTool?(tool: RegisteredTool, input?: string, options?: ToolExecutionOptions): Promise<string | null>;
+  executeTool?(tool: RegisteredTool, input?: unknown, options?: ToolExecutionOptions): Promise<string | null>;
 }
 
 interface LocalRegistration {
@@ -50,6 +50,7 @@ declare global {
 
 const localRegistrations = new Map<string, LocalRegistration>();
 const inputGuards = new Map<string, ToolInputGuard>();
+let executionInputMode: "unknown" | "object" | "json-string" = "unknown";
 
 export function getModelContext(): ModelContextLike | null {
   return document.modelContext ?? navigator.modelContext ?? null;
@@ -90,6 +91,38 @@ export async function executeLocalRegisteredTool<TInput extends object = Record<
   return registration.definition.execute(input as Record<string, unknown>, options);
 }
 
+function inputContractMismatch(error: unknown): boolean {
+  if (error instanceof SyntaxError) return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /input.*(object|string)|requires an object|valid json|json.*(parse|string)/i.test(message);
+}
+
+export async function executeDiscoveredTool(
+  tool: RegisteredTool,
+  input: Record<string, unknown>,
+  options?: ToolExecutionOptions,
+): Promise<string | null> {
+  const context = getModelContext();
+  if (!context?.executeTool) throw new Error("document.modelContext.executeTool is unavailable");
+  if (executionInputMode === "json-string") {
+    return context.executeTool(tool, JSON.stringify(input), options);
+  }
+  if (executionInputMode === "object") {
+    return context.executeTool(tool, input, options);
+  }
+
+  try {
+    const result = await context.executeTool(tool, input, options);
+    executionInputMode = "object";
+    return result;
+  } catch (error) {
+    if (!inputContractMismatch(error)) throw error;
+    const result = await context.executeTool(tool, JSON.stringify(input), options);
+    executionInputMode = "json-string";
+    return result;
+  }
+}
+
 function guardedDefinition<TInput extends object>(tool: ToolDefinition<TInput>): ToolDefinition {
   const guard = inputGuards.get(tool.name);
   if (!guard) return tool as ToolDefinition;
@@ -113,30 +146,37 @@ export async function registerTool<TInput extends object>(
   options: { exposedTo?: string[] } = {},
 ): Promise<AbortController | null> {
   const context = getModelContext();
-  if (!context) {
-    console.info(`[Relay] WebMCP unavailable; skipped ${tool.name}`);
-    return null;
-  }
-
   const definition = guardedDefinition(tool);
   const controller = new AbortController();
-  try {
-    await context.registerTool(definition, {
-      signal: controller.signal,
-      exposedTo: options.exposedTo,
-    });
-
-    const registration: LocalRegistration = {
-      definition,
-      controller,
-    };
+  const registration: LocalRegistration = {
+    definition,
+    controller,
+  };
+  const trackLocalRegistration = (): void => {
     localRegistrations.set(tool.name, registration);
     controller.signal.addEventListener("abort", () => {
       if (localRegistrations.get(tool.name) === registration) {
         localRegistrations.delete(tool.name);
       }
     }, { once: true });
+  };
 
+  // A provider may be embedded in a client that exposes WebMCP only to the
+  // top-level document. Keep the same guarded definition locally so Relay's
+  // origin-locked iframe transport can execute it without duplicating business
+  // logic. Direct/top-level providers still register natively when available.
+  if (!context) {
+    trackLocalRegistration();
+    console.info(`[Relay] WebMCP unavailable; retained ${tool.name} for local provider transport`);
+    return controller;
+  }
+
+  try {
+    await context.registerTool(definition, {
+      signal: controller.signal,
+      exposedTo: options.exposedTo,
+    });
+    trackLocalRegistration();
     return controller;
   } catch (error) {
     controller.abort();

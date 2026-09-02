@@ -72,15 +72,19 @@ one provider origin
 
 There is no arbitrary origin parameter and no generic execute-any wrapper.
 
-The bridge:
+The bridge prefers native cross-origin WebMCP. When a client exposes WebMCP
+only to the top document, it falls back to a versioned, origin-locked iframe
+RPC channel. Both transports execute the same guarded tool definition inside
+the provider origin.
 
-1. discovers an exact provider capability with `getTools({ fromOrigins })`
-2. mirrors read and proposal capabilities while the provider tool exists
-3. exposes commit wrappers only while the exact Relay plan remains human-approved
-4. invokes only the exact underlying provider tool through `executeTool()`
-5. unregisters obsolete wrappers when provider capability or authority disappears
+1. discover the exact provider capability through native `getTools({ fromOrigins })` or an exact provider capability announcement
+2. mirror read and proposal capabilities while the provider implementation exists
+3. expose commit wrappers only while the exact Relay plan remains human-approved
+4. invoke only the exact underlying provider tool through native `executeTool()` or an exact-origin, exact-frame RPC request
+5. reject wrong-origin, wrong-frame, oversized, timed-out and replayed RPC messages
+6. unregister obsolete wrappers when provider capability or authority disappears
 
-Relay allows a bounded five-second cold-start window for the permanent read/proposal bridge before diagnostics become callable. Provider-side PACT verification remains authoritative. The bridge cannot sign approval, bypass state versions or mutate inventory directly.
+Relay allows a bounded five-second cold-start window for the permanent read/proposal bridge before diagnostics become callable. Provider-side PACT verification remains authoritative in both transports. The bridge cannot sign approval, bypass state versions or mutate inventory directly.
 
 Use the normal Relay URL for judging. `?direct=1` disables the bridge only for controlled compatibility diagnosis.
 

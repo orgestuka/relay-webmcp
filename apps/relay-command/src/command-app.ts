@@ -291,6 +291,12 @@ window.addEventListener("message", (event: MessageEvent<unknown>) => {
   }
 
   const data = event.data as unknown as ProviderToRelayMessage;
+  // Origin-locked provider RPC messages are validated and consumed by the
+  // dedicated compatibility transport. They still pass this handler's exact
+  // origin/frame boundary before being ignored here.
+  if (data.type === "relay_provider_rpc_capabilities" || data.type === "relay_provider_rpc_response") {
+    return;
+  }
   if (data.type === "relay_provider_ready") {
     if (data.providerId !== sourceProvider) {
       securityReject(sourceProvider, "Provider ready identity did not match its origin.");

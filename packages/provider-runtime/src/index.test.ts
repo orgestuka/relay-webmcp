@@ -4,8 +4,10 @@ import type {
   ApprovalToken,
   PlanDraft,
   ProviderProposal,
+  ProviderRpcResponseMessage,
   ProviderToRelayMessage,
 } from "@relay/contracts";
+import { PROVIDER_RPC_PROTOCOL } from "@relay/contracts";
 import {
   createSessionSigner,
   hashPlan,
@@ -30,6 +32,8 @@ interface ProviderHarness {
   signer: SessionSigner;
   call<T extends object = Record<string, unknown>>(name: string, input: T): Promise<Record<string, unknown>>;
   getTool(name: string): ToolDefinition | undefined;
+  rpcCall(name: string, input: Record<string, unknown>, requestId?: string): Promise<ProviderRpcResponseMessage>;
+  dispatchMessage(data: unknown, options?: { origin?: string; source?: MessageEventSource | null }): void;
   injectDisruption(): void;
   close(): Promise<void>;
 }
@@ -45,6 +49,12 @@ function parseResult(value: unknown): Record<string, unknown> {
   expect(typeof parsed).toBe("object");
   expect(Array.isArray(parsed)).toBe(false);
   return parsed as Record<string, unknown>;
+}
+
+function parseRpcOutput(response: ProviderRpcResponseMessage): Record<string, unknown> {
+  expect(response.transportOk).toBe(true);
+  expect(typeof response.output).toBe("string");
+  return parseResult(response.output);
 }
 
 async function flushTasks(): Promise<void> {
@@ -189,6 +199,37 @@ async function createHarness(): Promise<ProviderHarness> {
     getTool(name) {
       return activeTools.get(name);
     },
+    async rpcCall(name, input, requestId = crypto.randomUUID()) {
+      const before = posted.length;
+      const event = {
+        source: fakeParent,
+        origin: relayOrigin,
+        data: {
+          type: "relay_provider_rpc_request",
+          protocol: PROVIDER_RPC_PROTOCOL,
+          requestId,
+          providerId: "shelter",
+          toolName: name,
+          input,
+        },
+      } as MessageEvent<unknown>;
+      for (const listener of messageListeners) listener(event);
+      await flushTasks();
+      const response = posted.slice(before)
+        .map(({ message }) => message)
+        .find((message): message is ProviderRpcResponseMessage =>
+          message.type === "relay_provider_rpc_response" && message.requestId === requestId);
+      expect(response, `Expected provider RPC response for ${requestId}`).toBeDefined();
+      return response!;
+    },
+    dispatchMessage(data, options = {}) {
+      const event = {
+        source: options.source === undefined ? fakeParent : options.source,
+        origin: options.origin ?? relayOrigin,
+        data,
+      } as MessageEvent<unknown>;
+      for (const listener of messageListeners) listener(event);
+    },
     injectDisruption() {
       expect(disruptionHandler).toBeTypeOf("function");
       disruptionHandler!();
@@ -207,6 +248,63 @@ afterEach(() => {
 });
 
 describe("provider runtime release invariants", () => {
+  it("executes the same provider tools through an origin-locked, replay-safe RPC fallback", async () => {
+    const harness = await createHarness();
+    try {
+      const advertised = harness.posted
+        .map(({ message }) => message)
+        .filter((message) => message.type === "relay_provider_rpc_capabilities")
+        .at(-1);
+      expect(advertised).toMatchObject({
+        protocol: PROVIDER_RPC_PROTOCOL,
+        providerId: "shelter",
+        tools: ["shelter_find_capacity", "shelter_propose_reservation"],
+      });
+
+      const read = parseRpcOutput(await harness.rpcCall("shelter_find_capacity", { minimum: 0 }));
+      expect(read).toMatchObject({ ok: true, providerOrigin });
+      expect(resourceAvailability(read, "north")).toBe(46);
+
+      const requestId = crypto.randomUUID();
+      const proposed = parseRpcOutput(await harness.rpcCall("shelter_propose_reservation", {
+        resourceId: "east",
+        quantity: 2,
+        purpose: "RPC fallback test",
+      }, requestId));
+      expect(proposed).toMatchObject({ ok: true });
+      expect(harness.posted
+        .map(({ message }) => message)
+        .filter((message) => message.type === "relay_provider_rpc_capabilities")
+        .at(-1)).toMatchObject({
+          tools: ["shelter_commit_reservation", "shelter_find_capacity", "shelter_propose_reservation"],
+        });
+
+      const replay = await harness.rpcCall("shelter_propose_reservation", {
+        resourceId: "east",
+        quantity: 2,
+        purpose: "Must not execute twice",
+      }, requestId);
+      expect(replay).toMatchObject({
+        transportOk: false,
+        error: { code: "PROVIDER_RPC_REPLAYED" },
+      });
+
+      const postedBeforeWrongOrigin = harness.posted.length;
+      harness.dispatchMessage({
+        type: "relay_provider_rpc_request",
+        protocol: PROVIDER_RPC_PROTOCOL,
+        requestId: crypto.randomUUID(),
+        providerId: "shelter",
+        toolName: "shelter_find_capacity",
+        input: { minimum: 0 },
+      }, { origin: "https://evil.example.test" });
+      await flushTasks();
+      expect(harness.posted).toHaveLength(postedBeforeWrongOrigin);
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("rejects an incomplete approved same-origin batch without changing capacity", async () => {
     const harness = await createHarness();
     try {

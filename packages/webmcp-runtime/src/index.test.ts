@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   DynamicTool,
+  executeDiscoveredTool,
   executeLocalRegisteredTool,
   getLocalRegisteredToolNames,
   installToolInputGuard,
   registerTool,
   toolOutput,
   type ToolDefinition,
+  type RegisteredTool,
 } from "./index";
 
 const originalDocument = globalThis.document;
@@ -47,6 +49,53 @@ const definition = {
 };
 
 describe("local registration evidence", () => {
+  it("adapts discovered-tool input to clients that require a JSON string", async () => {
+    const received: unknown[] = [];
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: {
+        modelContext: {
+          registerTool: async () => {},
+          async executeTool(_tool: RegisteredTool, input: unknown) {
+            received.push(input);
+            if (typeof input !== "string") throw new TypeError("Input must be a valid JSON string");
+            return JSON.stringify({ ok: true, input: JSON.parse(input) });
+          },
+        },
+      },
+    });
+    Object.defineProperty(globalThis, "navigator", { configurable: true, value: {} });
+
+    const result = await executeDiscoveredTool({ name: "remote_read", origin: "https://provider.test" }, { minimum: 0 });
+    expect(JSON.parse(result ?? "{}")).toMatchObject({ ok: true, input: { minimum: 0 } });
+    expect(received).toEqual([{ minimum: 0 }, '{"minimum":0}']);
+  });
+
+  it("retains a guarded local definition when the embedding client omits frame WebMCP", async () => {
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: {},
+    });
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: {},
+    });
+    const name = "relay_test_frame_fallback";
+    const controller = await registerTool({
+      name,
+      description: "Remain callable through the provider iframe transport.",
+      execute: (input: { marker: string }) => ({ ok: true, marker: input.marker }),
+    });
+
+    expect(controller).not.toBeNull();
+    expect(getLocalRegisteredToolNames()).toContain(name);
+    await expect(executeLocalRegisteredTool(name, { marker: "fallback" }))
+      .resolves.toEqual({ ok: true, marker: "fallback" });
+
+    controller?.abort();
+    expect(getLocalRegisteredToolNames()).not.toContain(name);
+  });
+
   it("executes a registered local read without recursively calling executeTool", async () => {
     installContext(async () => {});
     const name = "relay_test_local_read";

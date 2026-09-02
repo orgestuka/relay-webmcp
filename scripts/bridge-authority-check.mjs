@@ -114,13 +114,15 @@ try {
 
   const wrapperStart = bridge.indexOf("function wrapperFor(");
   const wrapperAuthority = bridge.indexOf("bridgeCapabilityAllowed({", wrapperStart);
-  const providerExecution = bridge.indexOf("context.executeTool(remote", wrapperStart);
+  const nativeProviderExecution = bridge.indexOf("executeDiscoveredTool(remote", wrapperStart);
+  const fallbackProviderExecution = bridge.indexOf("executeProviderRpc(", wrapperStart);
   report.checks.push(check(
     "invocation_time_authority_precedes_provider_execution",
     wrapperStart >= 0
       && wrapperAuthority > wrapperStart
-      && providerExecution > wrapperAuthority,
-    "A captured wrapper reference must re-check current human authority before provider execution.",
+      && nativeProviderExecution > wrapperAuthority
+      && fallbackProviderExecution > wrapperAuthority,
+    "A captured wrapper reference must re-check current human authority before either provider transport executes.",
   ));
 
   const syncStart = bridge.indexOf("async function synchronizeWrappers(");

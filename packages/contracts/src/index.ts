@@ -107,6 +107,48 @@ export interface RelaySessionInitMessage {
   commandOrigin: string;
 }
 
+export const PROVIDER_RPC_PROTOCOL = "relay.provider-rpc.v1" as const;
+
+export interface ProviderRpcProbeMessage {
+  type: "relay_provider_rpc_probe";
+  protocol: typeof PROVIDER_RPC_PROTOCOL;
+  providerId: ProviderId;
+}
+
+export interface ProviderRpcRequestMessage {
+  type: "relay_provider_rpc_request";
+  protocol: typeof PROVIDER_RPC_PROTOCOL;
+  requestId: string;
+  providerId: ProviderId;
+  toolName: string;
+  input: unknown;
+}
+
+export interface ProviderRpcCapabilitiesMessage {
+  type: "relay_provider_rpc_capabilities";
+  protocol: typeof PROVIDER_RPC_PROTOCOL;
+  providerId: ProviderId;
+  tools: string[];
+}
+
+export interface ProviderRpcResponseMessage {
+  type: "relay_provider_rpc_response";
+  protocol: typeof PROVIDER_RPC_PROTOCOL;
+  requestId: string;
+  providerId: ProviderId;
+  toolName: string;
+  transportOk: boolean;
+  output?: string;
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
+export type RelayToProviderRpcMessage =
+  | ProviderRpcProbeMessage
+  | ProviderRpcRequestMessage;
+
 export interface ProviderReadyMessage {
   type: "relay_provider_ready";
   providerId: ProviderId;
@@ -131,4 +173,6 @@ export type ProviderToRelayMessage =
   | ProviderReadyMessage
   | ProviderStateMessage
   | ProviderProposalMessage
-  | ProviderReceiptMessage;
+  | ProviderReceiptMessage
+  | ProviderRpcCapabilitiesMessage
+  | ProviderRpcResponseMessage;

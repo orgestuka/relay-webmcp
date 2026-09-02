@@ -1,6 +1,6 @@
 import "./demo-agent.css";
 import type { ApprovalToken, ProviderId, ProviderProposal } from "@relay/contracts";
-import type { RegisteredTool } from "@relay/webmcp-runtime";
+import { executeDiscoveredTool, type RegisteredTool } from "@relay/webmcp-runtime";
 
 const providerOrigins: Record<ProviderId, string> = {
   shelter: new URL(import.meta.env.VITE_SHELTER_ORIGIN || "http://localhost:5174").origin,
@@ -98,7 +98,8 @@ async function waitForTool(name: string, timeoutMs = 12_000): Promise<Registered
 function parseToolResult(toolName: string, raw: string | null): ToolResult {
   if (raw === null) throw new Error(`${toolName} returned no result.`);
   try {
-    const parsed = JSON.parse(raw) as unknown;
+    const first = JSON.parse(raw) as unknown;
+    const parsed = typeof first === "string" ? JSON.parse(first) as unknown : first;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("result was not an object");
     return parsed as ToolResult;
   } catch (error) {
@@ -110,7 +111,7 @@ async function invoke(name: string, input: Record<string, unknown>, allowFailure
   const tool = await waitForTool(name);
   const origin = tool.origin === window.location.origin ? "Relay" : new URL(tool.origin).hostname;
   trace("call", `${name} @ ${origin}`);
-  const raw = await context().executeTool!(tool, JSON.stringify(input));
+  const raw = await executeDiscoveredTool(tool, input);
   const result = parseToolResult(name, raw);
   if (result.ok === false && !allowFailure) throw new ToolFailure(name, result);
   trace(result.ok === false ? "error" : "result", result.ok === false ? `${name} rejected: ${result.code ?? "UNKNOWN"}` : `${name} returned verified JSON`);

@@ -1,5 +1,6 @@
 import {
   DynamicTool,
+  executeDiscoveredTool,
   executeLocalRegisteredTool,
   getModelContext,
   registerTool,
@@ -8,6 +9,13 @@ import {
   type ToolAnnotations,
 } from "@relay/webmcp-runtime";
 import { bridgeCapabilityAllowed } from "./bridge-authority";
+import {
+  executeProviderRpc,
+  PROVIDER_RPC_TOOLCHANGE_EVENT,
+  providerRpcSnapshot,
+  providerRpcSupports,
+  refreshProviderRpcCapabilities,
+} from "./provider-rpc-client";
 import { recordApprovalEvidence } from "./release-state";
 
 interface BridgeSpec {
@@ -27,6 +35,8 @@ interface PlanEnvelope {
     status?: unknown;
   } | null;
 }
+
+type BridgeTransport = "native-webmcp" | "origin-locked-provider-rpc";
 
 const commandOrigin = window.location.origin;
 const origins = {
@@ -177,6 +187,7 @@ const specs: BridgeSpec[] = [
 ];
 
 const wrappers = new Map<string, DynamicTool>();
+const activeTransports = new Map<string, BridgeTransport>();
 let syncTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
 let syncInterval: ReturnType<typeof globalThis.setInterval> | null = null;
 let syncRunning = false;
@@ -217,13 +228,25 @@ function exactRemoteTool(tools: RegisteredTool[], spec: BridgeSpec): RegisteredT
 async function discoverRemoteTools(): Promise<RegisteredTool[]> {
   const context = getModelContext();
   if (!context?.getTools) return [];
-  const tools = await context.getTools({ fromOrigins: Object.values(origins) });
-  return tools.filter((tool) => Object.values(origins).includes(tool.origin));
+  try {
+    const tools = await context.getTools({ fromOrigins: Object.values(origins) });
+    return tools.filter((tool) => Object.values(origins).includes(tool.origin));
+  } catch (error) {
+    console.info("[Relay bridge] Native cross-origin discovery unavailable; using provider RPC when ready.", error);
+    return [];
+  }
+}
+
+function transportFor(spec: BridgeSpec, remoteTools: RegisteredTool[]): BridgeTransport | null {
+  if (exactRemoteTool(remoteTools, spec)) return "native-webmcp";
+  if (providerRpcSupports(spec.provider, spec.remoteName)) return "origin-locked-provider-rpc";
+  return null;
 }
 
 function providerAccepted(result: string): boolean {
   try {
-    const value = JSON.parse(result) as unknown;
+    const parsed = JSON.parse(result) as unknown;
+    const value = typeof parsed === "string" ? JSON.parse(parsed) as unknown : parsed;
     return isRecord(value) && value.ok === true;
   } catch {
     return false;
@@ -255,20 +278,23 @@ function wrapperFor(spec: BridgeSpec): DynamicTool {
     annotations: spec.annotations,
     execute: async (input: Record<string, unknown>) => {
       const context = getModelContext();
-      if (!context?.getTools || !context.executeTool) {
-        return toolOutput({
-          ok: false,
-          code: "BRIDGE_API_UNAVAILABLE",
-          origin: spec.origin,
-          remoteTool: spec.remoteName,
-        });
+      let remote: RegisteredTool | undefined;
+      if (context?.getTools && context.executeTool) {
+        try {
+          remote = exactRemoteTool(
+            await context.getTools({ fromOrigins: [spec.origin] }),
+            spec,
+          );
+        } catch {
+          remote = undefined;
+        }
       }
-
-      const remote = exactRemoteTool(
-        await context.getTools({ fromOrigins: [spec.origin] }),
-        spec,
-      );
-      if (!remote) {
+      const transport: BridgeTransport | null = remote
+        ? "native-webmcp"
+        : providerRpcSupports(spec.provider, spec.remoteName)
+          ? "origin-locked-provider-rpc"
+          : null;
+      if (!transport) {
         scheduleSync();
         return toolOutput({
           ok: false,
@@ -292,7 +318,9 @@ function wrapperFor(spec: BridgeSpec): DynamicTool {
       }
 
       try {
-        const result = await context.executeTool(remote, JSON.stringify(input ?? {}));
+        const result = transport === "native-webmcp"
+          ? await executeDiscoveredTool(remote!, input ?? {})
+          : await executeProviderRpc(spec.provider, spec.remoteName, input ?? {});
         if (result === null) {
           return toolOutput({
             ok: false,
@@ -329,6 +357,7 @@ async function synchronizeWrappers(): Promise<void> {
   }
   syncRunning = true;
   try {
+    refreshProviderRpcCapabilities();
     const [remoteTools, planStatus] = await Promise.all([
       discoverRemoteTools(),
       readPlanStatus(),
@@ -337,15 +366,18 @@ async function synchronizeWrappers(): Promise<void> {
 
     for (const spec of specs) {
       const wrapper = wrapperFor(spec);
-      const remoteAvailable = Boolean(exactRemoteTool(remoteTools, spec));
+      const transport = transportFor(spec, remoteTools);
+      const remoteAvailable = transport !== null;
       if (bridgeCapabilityAllowed({
         remoteAvailable,
         requiresHumanApproval: spec.requiresHumanApproval,
         planStatus,
       })) {
         await wrapper.enable();
+        if (transport) activeTransports.set(spec.wrapperName, transport);
       } else {
         wrapper.disable();
+        activeTransports.delete(spec.wrapperName);
       }
     }
     lastSyncAt = new Date().toISOString();
@@ -384,7 +416,7 @@ async function bootBridge(): Promise<void> {
       const planStatus = await readPlanStatus();
       return toolOutput({
         ok: !lastError,
-        mode: "fixed-top-level-capability-bridge",
+        mode: "native-or-origin-locked-provider-bridge",
         commandOrigin,
         planStatus,
         lastObservedPlanStatus: lastPlanStatus,
@@ -397,7 +429,9 @@ async function bootBridge(): Promise<void> {
           wrapperTool: spec.wrapperName,
           requiresHumanApproval: spec.requiresHumanApproval,
           active: wrappers.get(spec.wrapperName)?.active ?? false,
+          transport: activeTransports.get(spec.wrapperName) ?? null,
         })),
+        providerRpcCapabilities: providerRpcSnapshot(),
         security: {
           arbitraryOriginSelection: false,
           arbitraryToolSelection: false,
@@ -406,6 +440,9 @@ async function bootBridge(): Promise<void> {
           invocationTimeAuthorityRecheck: true,
           dynamicCapabilityMirroring: true,
           periodicDiscoveryFallback: true,
+          exactTargetOriginMessaging: true,
+          exactFrameSourceValidation: true,
+          providerBusinessLogicDuplicatedInRelay: false,
         },
       });
     },
@@ -414,6 +451,8 @@ async function bootBridge(): Promise<void> {
   if (typeof context.addEventListener === "function") {
     context.addEventListener("toolchange", () => scheduleSync());
   }
+  window.addEventListener(PROVIDER_RPC_TOOLCHANGE_EVENT, () => scheduleSync());
+  refreshProviderRpcCapabilities();
   scheduleSync(0);
   globalThis.setTimeout(() => scheduleSync(0), 300);
   globalThis.setTimeout(() => scheduleSync(0), 900);

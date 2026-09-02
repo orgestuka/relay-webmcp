@@ -1,12 +1,16 @@
 import type {
   ApprovalToken,
   CommitReceipt,
+  ProviderId,
   ProviderProposal,
+  ProviderRpcProbeMessage,
+  ProviderRpcRequestMessage,
   ProviderStateSnapshot,
   ProviderToRelayMessage,
   RelaySessionInitMessage,
   ResourceRecord,
 } from "@relay/contracts";
+import { PROVIDER_RPC_PROTOCOL } from "@relay/contracts";
 import {
   isExpired,
   isP256PublicJwk,
@@ -16,6 +20,8 @@ import {
 import type { ProviderSeed } from "@relay/simulation";
 import {
   DynamicTool,
+  executeLocalRegisteredTool,
+  getLocalRegisteredToolNames,
   registerTool,
   toolOutput,
   webMcpAvailable,
@@ -39,6 +45,9 @@ interface SessionTrust {
 
 const PROPOSAL_TTL_MS = 5 * 60_000;
 const MAX_OPEN_PROPOSALS = 100;
+const MAX_RPC_INPUT_BYTES = 64 * 1024;
+const MAX_RPC_OUTPUT_BYTES = 1024 * 1024;
+const MAX_RPC_REQUEST_IDS = 2_048;
 
 function normalizeOrigin(value: string): string {
   const url = new URL(value, window.location.href);
@@ -87,6 +96,31 @@ function isRelaySessionInit(
     && isP256PublicJwk(value.publicKeyJwk);
 }
 
+function isProviderRpcProbe(value: unknown, providerId: ProviderId): value is ProviderRpcProbeMessage {
+  if (!isRecord(value)) return false;
+  return Object.keys(value).length === 3
+    && value.type === "relay_provider_rpc_probe"
+    && value.protocol === PROVIDER_RPC_PROTOCOL
+    && value.providerId === providerId;
+}
+
+function isProviderRpcRequest(value: unknown, providerId: ProviderId): value is ProviderRpcRequestMessage {
+  if (!isRecord(value)) return false;
+  if (Object.keys(value).length !== 6
+    || value.type !== "relay_provider_rpc_request"
+    || value.protocol !== PROVIDER_RPC_PROTOCOL
+    || value.providerId !== providerId
+    || typeof value.requestId !== "string"
+    || !/^[a-zA-Z0-9-]{1,160}$/.test(value.requestId)
+    || typeof value.toolName !== "string"
+    || !isRecord(value.input)) return false;
+  try {
+    return JSON.stringify(value.input).length <= MAX_RPC_INPUT_BYTES;
+  } catch {
+    return false;
+  }
+}
+
 function validateSeed(seed: ProviderSeed): void {
   if (!seed.resources.length) throw new Error(`${seed.providerName} has no resources.`);
   const ids = new Set<string>();
@@ -111,12 +145,34 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
   let disruptionInjected = false;
   const proposals = new Map<string, ProviderProposal>();
   const receipts: CommitReceipt[] = [];
+  const seenRpcRequestIds = new Set<string>();
 
   const app = document.querySelector<HTMLDivElement>("#app");
   if (!app) throw new Error("Missing #app");
 
   const post = (message: ProviderToRelayMessage): void => {
     if (window.parent !== window) window.parent.postMessage(message, relayOrigin);
+  };
+
+  const rpcToolNames = new Set([
+    options.searchToolName,
+    options.proposeToolName,
+    options.commitToolName,
+  ]);
+
+  const postRpcCapabilities = (): void => {
+    const tools = trust
+      ? getLocalRegisteredToolNames()
+        .filter((name) => rpcToolNames.has(name))
+        .filter((name) => name !== options.commitToolName || validProposalCount() > 0)
+        .sort()
+      : [];
+    post({
+      type: "relay_provider_rpc_capabilities",
+      protocol: PROVIDER_RPC_PROTOCOL,
+      providerId: seed.providerId,
+      tools,
+    });
   };
 
   const snapshot = (): ProviderStateSnapshot => ({
@@ -144,7 +200,12 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
       proposal.stateVersion === stateVersion && !isExpired(proposal.expiresAt, now)).length;
 
   const render = (): void => {
-    const mcpState = webMcpAvailable() ? "WebMCP live" : "WebMCP unavailable";
+    const isAgentReachable = webMcpAvailable() || Boolean(trust);
+    const mcpState = webMcpAvailable()
+      ? "WebMCP live"
+      : trust
+        ? "Relay bridge live"
+        : "WebMCP unavailable";
     const trustState = trust ? "signed Relay session" : "awaiting Relay trust";
     app.innerHTML = `
       <main class="provider-shell">
@@ -155,7 +216,7 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
             <p>${escapeHtml(seed.description)}</p>
           </div>
           <div class="status-stack">
-            <span class="status ${webMcpAvailable() ? "status-live" : "status-warn"}">${mcpState}</span>
+            <span class="status ${isAgentReachable ? "status-live" : "status-warn"}">${mcpState}</span>
             <span class="status ${trust ? "status-live" : "status-warn"}">${trustState}</span>
             <span class="status">state v${stateVersion}</span>
           </div>
@@ -321,6 +382,7 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
     if (trust && validProposalCount() > 0) await commitTool.enable();
     else commitTool.disable();
     scheduleExpiry();
+    postRpcCapabilities();
   };
 
   function injectDisruption(): void {
@@ -437,25 +499,112 @@ export async function mountProvider(options: ProviderRuntimeOptions): Promise<vo
     { exposedTo: [relayOrigin] },
   );
 
+  const executeRpcRequest = async (message: ProviderRpcRequestMessage): Promise<void> => {
+    if (seenRpcRequestIds.has(message.requestId)) {
+      post({
+        type: "relay_provider_rpc_response",
+        protocol: PROVIDER_RPC_PROTOCOL,
+        requestId: message.requestId,
+        providerId: seed.providerId,
+        toolName: message.toolName,
+        transportOk: false,
+        error: {
+          code: "PROVIDER_RPC_REPLAYED",
+          message: "Provider RPC request IDs are single-use.",
+        },
+      });
+      return;
+    }
+    seenRpcRequestIds.add(message.requestId);
+    if (seenRpcRequestIds.size > MAX_RPC_REQUEST_IDS) {
+      const oldest = seenRpcRequestIds.values().next().value;
+      if (typeof oldest === "string") seenRpcRequestIds.delete(oldest);
+    }
+
+    try {
+      const localTools = new Set(getLocalRegisteredToolNames());
+      const isCommitActive = message.toolName !== options.commitToolName || validProposalCount() > 0;
+      if (!trust || !rpcToolNames.has(message.toolName) || !localTools.has(message.toolName) || !isCommitActive) {
+        post({
+          type: "relay_provider_rpc_response",
+          protocol: PROVIDER_RPC_PROTOCOL,
+          requestId: message.requestId,
+          providerId: seed.providerId,
+          toolName: message.toolName,
+          transportOk: true,
+          output: toolOutput({
+            ok: false,
+            code: trust ? "UNDERLYING_CAPABILITY_UNAVAILABLE" : "NO_RELAY_SESSION",
+            provider: seed.providerId,
+            toolName: message.toolName,
+          }),
+        });
+        return;
+      }
+
+      const result = await executeLocalRegisteredTool(
+        message.toolName,
+        structuredClone(message.input) as Record<string, unknown>,
+      );
+      if (typeof result !== "string" || result.length > MAX_RPC_OUTPUT_BYTES) {
+        throw new Error("Provider tool returned an invalid or oversized response.");
+      }
+      post({
+        type: "relay_provider_rpc_response",
+        protocol: PROVIDER_RPC_PROTOCOL,
+        requestId: message.requestId,
+        providerId: seed.providerId,
+        toolName: message.toolName,
+        transportOk: true,
+        output: result,
+      });
+    } catch (error) {
+      post({
+        type: "relay_provider_rpc_response",
+        protocol: PROVIDER_RPC_PROTOCOL,
+        requestId: message.requestId,
+        providerId: seed.providerId,
+        toolName: message.toolName,
+        transportOk: false,
+        error: {
+          code: "PROVIDER_RPC_EXECUTION_FAILED",
+          message: error instanceof Error ? error.message.slice(0, 240) : "Provider RPC execution failed.",
+        },
+      });
+    } finally {
+      postRpcCapabilities();
+    }
+  };
+
   window.addEventListener("message", (event: MessageEvent<unknown>) => {
     if (event.source !== window.parent || event.origin !== relayOrigin) return;
-    if (!isRelaySessionInit(event.data, relayOrigin)) return;
 
-    const nextFingerprint = keyFingerprint(event.data.publicKeyJwk);
-    if (trust && trust.sessionId === event.data.sessionId && trust.keyFingerprint !== nextFingerprint) {
-      console.warn(`[${seed.providerName}] Rejected public-key substitution inside an active Relay session.`);
+    if (isRelaySessionInit(event.data, relayOrigin)) {
+      const nextFingerprint = keyFingerprint(event.data.publicKeyJwk);
+      if (trust && trust.sessionId === event.data.sessionId && trust.keyFingerprint !== nextFingerprint) {
+        console.warn(`[${seed.providerName}] Rejected public-key substitution inside an active Relay session.`);
+        return;
+      }
+
+      const sessionChanged = Boolean(trust && trust.sessionId !== event.data.sessionId);
+      trust = {
+        sessionId: event.data.sessionId,
+        publicKeyJwk: structuredClone(event.data.publicKeyJwk),
+        keyFingerprint: nextFingerprint,
+      };
+      if (sessionChanged) proposals.clear();
+      void syncCommitTool();
+      render();
       return;
     }
 
-    const sessionChanged = Boolean(trust && trust.sessionId !== event.data.sessionId);
-    trust = {
-      sessionId: event.data.sessionId,
-      publicKeyJwk: structuredClone(event.data.publicKeyJwk),
-      keyFingerprint: nextFingerprint,
-    };
-    if (sessionChanged) proposals.clear();
-    void syncCommitTool();
-    render();
+    if (isProviderRpcProbe(event.data, seed.providerId)) {
+      postRpcCapabilities();
+      return;
+    }
+    if (isProviderRpcRequest(event.data, seed.providerId)) {
+      void executeRpcRequest(event.data);
+    }
   });
 
   window.addEventListener("pagehide", () => {

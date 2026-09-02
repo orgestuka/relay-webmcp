@@ -1,5 +1,6 @@
 import { sha256 } from "@relay/pact";
 import {
+  executeDiscoveredTool,
   executeLocalRegisteredTool,
   getLocalRegisteredToolNames,
   getModelContext,
@@ -15,6 +16,7 @@ interface ProviderDiagnosticSpec {
   id: "shelter" | "transit" | "supply";
   origin: string;
   readTool: string;
+  bridgeReadTool: string;
   expectedTools: string[];
 }
 
@@ -55,18 +57,21 @@ const providerSpecs: ProviderDiagnosticSpec[] = [
     id: "shelter",
     origin: new URL(import.meta.env.VITE_SHELTER_ORIGIN || "http://localhost:5174", window.location.href).origin,
     readTool: "shelter_find_capacity",
+    bridgeReadTool: "relay_bridge_shelter_find_capacity",
     expectedTools: ["shelter_find_capacity", "shelter_propose_reservation", "shelter_commit_reservation"],
   },
   {
     id: "transit",
     origin: new URL(import.meta.env.VITE_TRANSIT_ORIGIN || "http://localhost:5175", window.location.href).origin,
     readTool: "transit_find_accessible_routes",
+    bridgeReadTool: "relay_bridge_transit_find_accessible_routes",
     expectedTools: ["transit_find_accessible_routes", "transit_propose_reservation", "transit_commit_reservation"],
   },
   {
     id: "supply",
     origin: new URL(import.meta.env.VITE_SUPPLY_ORIGIN || "http://localhost:5176", window.location.href).origin,
     readTool: "supply_check_stock",
+    bridgeReadTool: "relay_bridge_supply_check_stock",
     expectedTools: ["supply_check_stock", "supply_propose_reservation", "supply_commit_reservation"],
   },
 ];
@@ -187,7 +192,15 @@ function parseToolOutput(raw: unknown): { ok: true; value: unknown } | { ok: fal
   if (raw === null || raw === undefined) return { ok: false, error: "Tool returned no result." };
   if (typeof raw !== "string") return { ok: true, value: raw };
   try {
-    return { ok: true, value: JSON.parse(raw) as unknown };
+    const parsed = JSON.parse(raw) as unknown;
+    if (typeof parsed === "string") {
+      try {
+        return { ok: true, value: JSON.parse(parsed) as unknown };
+      } catch {
+        return { ok: true, value: parsed };
+      }
+    }
+    return { ok: true, value: parsed };
   } catch (error) {
     return {
       ok: false,
@@ -214,7 +227,7 @@ async function executeExactTool(
   if (!tool) return { ok: false, error: `Exact tool ${origin}::${name} is not discoverable` };
 
   try {
-    const parsed = parseToolOutput(await context.executeTool(tool, JSON.stringify(input)));
+    const parsed = parseToolOutput(await executeDiscoveredTool(tool, input));
     if (!parsed.ok) return parsed;
     if (!semanticSuccess(parsed.value)) {
       return {
@@ -290,8 +303,13 @@ async function registerReleaseTools(): Promise<void> {
       const providers = [];
       for (const provider of providerSpecs) {
         const visibleTools = grouped[provider.origin] ?? [];
+        const clientVisibleRelayTools = grouped[commandOrigin] ?? [];
+        const nativeDiscoveryPass = visibleTools.includes(provider.readTool);
+        const bridgeVisibilityPass = clientVisibleRelayTools.includes(provider.bridgeReadTool);
+        const executionOrigin = nativeDiscoveryPass ? provider.origin : commandOrigin;
+        const executionTool = nativeDiscoveryPass ? provider.readTool : provider.bridgeReadTool;
         const probe: ExecutionProbe = executeReadProbes
-          ? await executeExactTool(collection.tools, provider.origin, provider.readTool, { minimum: 0 })
+          ? await executeExactTool(collection.tools, executionOrigin, executionTool, { minimum: 0 })
           : { ok: false, skipped: true, error: "probe skipped by caller" };
         providers.push({
           id: provider.id,
@@ -299,8 +317,12 @@ async function registerReleaseTools(): Promise<void> {
           expectedTools: provider.expectedTools,
           visibleTools,
           readTool: provider.readTool,
+          bridgeReadTool: provider.bridgeReadTool,
+          nativeDiscoveryPass,
+          bridgeVisibilityPass,
+          effectiveTransport: nativeDiscoveryPass ? "native-cross-origin-webmcp" : bridgeVisibilityPass ? "relay-provider-bridge" : null,
           readProbe: probe,
-          discoveryPass: visibleTools.includes(provider.readTool),
+          discoveryPass: nativeDiscoveryPass || bridgeVisibilityPass,
           executionPass: executeReadProbes ? probe.ok : null,
         });
       }
@@ -316,7 +338,7 @@ async function registerReleaseTools(): Promise<void> {
       const providerExecutionPass = executeReadProbes
         ? providers.every((provider) => provider.executionPass === true)
         : null;
-      const compatibilityMode = bridgeTools.length ? "fixed-top-level-bridge-active" : "direct-only";
+      const compatibilityMode = bridgeTools.length ? "origin-locked-provider-bridge-active" : "direct-only";
       const bridgePass = compatibilityMode === "direct-only"
         || (initialBridgeRegistrationPass && initialBridgeVisibilityPass);
       const overallPass = provenancePass

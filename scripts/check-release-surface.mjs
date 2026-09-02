@@ -20,8 +20,12 @@ const files = {
   releaseProvenance: "apps/relay-command/src/release-provenance.ts",
   releaseIdentity: "apps/relay-command/src/release-identity.ts",
   bridge: "apps/relay-command/src/compatibility-bridge.ts",
+  providerRpcClient: "apps/relay-command/src/provider-rpc-client.ts",
   capabilitySurface: "apps/relay-command/src/capability-surface.ts",
   diagnostics: "apps/relay-command/src/release-diagnostics.ts",
+  providerRuntime: "packages/provider-runtime/src/index.ts",
+  webmcpRuntime: "packages/webmcp-runtime/src/index.ts",
+  contracts: "packages/contracts/src/index.ts",
   audit: "apps/relay-command/src/audit-consistency.ts",
   releaseGate: "scripts/release-gate.mjs",
   deploymentSmoke: "scripts/deployment-smoke.mjs",
@@ -159,6 +163,65 @@ const diagnostics = content.diagnostics ?? "";
 check("bridge_fixed_origins", bridge.includes("exactRemoteTool") && bridge.includes("fromOrigins: [spec.origin]") && bridge.includes("arbitraryOriginSelection: false"), files.bridge, "Bridge execution must remain fixed to exact provider origin and tool pairs.");
 check("bridge_approval_gate", bridge.includes("bridgeCapabilityAllowed") && bridge.includes("requiresHumanApproval") && bridge.includes("readPlanStatus") && bridge.includes("HUMAN_APPROVAL_REQUIRED"), files.bridge, "Top-level commit wrappers must be registration-time and invocation-time gated by exact human approval.");
 check("bridge_provider_acceptance", bridge.includes("providerAccepted") && bridge.includes("recordApprovalEvidence"), files.bridge, "Approval evidence must be recorded only after provider success.");
+check(
+  "bridge_origin_locked_rpc_fallback",
+  bridge.includes('"native-webmcp" | "origin-locked-provider-rpc"')
+    && bridge.includes("providerRpcSupports(spec.provider, spec.remoteName)")
+    && bridge.includes("executeProviderRpc(spec.provider, spec.remoteName"),
+  files.bridge,
+  "The fixed bridge must prefer native cross-origin WebMCP and fall back only to the exact provider/tool RPC pair.",
+);
+
+const providerRpcClient = content.providerRpcClient ?? "";
+check(
+  "provider_rpc_parent_boundary",
+  providerRpcClient.includes("event.source === frame.contentWindow")
+    && providerRpcClient.includes("event.origin === origins[providerId]")
+    && providerRpcClient.includes("postMessage(request, origins[providerId])")
+    && providerRpcClient.includes("RPC_TIMEOUT_MS = 5_000")
+    && providerRpcClient.includes("MAX_INPUT_BYTES = 64 * 1024"),
+  files.providerRpcClient,
+  "Parent-side provider RPC must pin source, origin, destination, request size and timeout.",
+);
+
+const providerRuntime = content.providerRuntime ?? "";
+const webmcpRuntime = content.webmcpRuntime ?? "";
+const contracts = content.contracts ?? "";
+check(
+  "provider_rpc_provider_boundary",
+  providerRuntime.includes("event.source !== window.parent || event.origin !== relayOrigin")
+    && providerRuntime.includes("PROVIDER_RPC_REPLAYED")
+    && providerRuntime.includes("executeLocalRegisteredTool")
+    && providerRuntime.includes("MAX_RPC_OUTPUT_BYTES = 1024 * 1024"),
+  files.providerRuntime,
+  "Provider-side RPC must enforce its trusted parent, prevent request replay and execute the provider's own guarded tool definition.",
+);
+check(
+  "provider_rpc_single_business_logic",
+  webmcpRuntime.includes("retained ${tool.name} for local provider transport")
+    && webmcpRuntime.includes("trackLocalRegistration()")
+    && contracts.includes('PROVIDER_RPC_PROTOCOL = "relay.provider-rpc.v1"'),
+  `${files.webmcpRuntime}, ${files.contracts}`,
+  "Native WebMCP and iframe fallback must share one provider-owned tool implementation and one versioned protocol.",
+);
+check(
+  "diagnostic_effective_provider_transport",
+  diagnostics.includes("nativeDiscoveryPass || bridgeVisibilityPass")
+    && diagnostics.includes('effectiveTransport: nativeDiscoveryPass ? "native-cross-origin-webmcp"')
+    && diagnostics.includes('compatibilityMode = bridgeTools.length ? "origin-locked-provider-bridge-active"'),
+  files.diagnostics,
+  "Live diagnostics must distinguish native cross-origin discovery from the explicit Relay provider bridge.",
+);
+check(
+  "webmcp_execute_input_compatibility",
+  webmcpRuntime.includes("executeDiscoveredTool")
+    && webmcpRuntime.includes("inputContractMismatch")
+    && webmcpRuntime.includes("JSON.stringify(input)")
+    && diagnostics.includes('if (typeof parsed === "string")')
+    && diagnostics.includes("JSON.parse(parsed)"),
+  `${files.webmcpRuntime}, ${files.diagnostics}`,
+  "Tool execution must adapt between JSON-string and object-input WebMCP clients and normalize one nested result encoding.",
+);
 
 const capabilitySurface = content.capabilitySurface ?? "";
 check(
