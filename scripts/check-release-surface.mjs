@@ -20,6 +20,7 @@ const files = {
   releaseProvenance: "apps/relay-command/src/release-provenance.ts",
   releaseIdentity: "apps/relay-command/src/release-identity.ts",
   bridge: "apps/relay-command/src/compatibility-bridge.ts",
+  capabilitySurface: "apps/relay-command/src/capability-surface.ts",
   diagnostics: "apps/relay-command/src/release-diagnostics.ts",
   audit: "apps/relay-command/src/audit-consistency.ts",
   releaseGate: "scripts/release-gate.mjs",
@@ -154,11 +155,22 @@ const releaseIdentity = content.releaseIdentity ?? "";
 check("release_identity_tool", releaseIdentity.includes('name: "relay_get_release_identity"') && releaseIdentity.includes('fetch("/release.json"') && releaseIdentity.includes('response.headers.get("x-relay-release")') && releaseIdentity.includes("consistentHeaderValue(edgeHeaderRaw)") && releaseIdentity.includes("edgeHeaderConsistent") && releaseIdentity.includes("compiledSha === edgeSha") && releaseIdentity.includes("edgeSha === manifestSha"), files.releaseIdentity, "ChatGPT needs a conflict-safe read-only proof that compiled, edge and manifest identities match.");
 
 const bridge = content.bridge ?? "";
+const diagnostics = content.diagnostics ?? "";
 check("bridge_fixed_origins", bridge.includes("exactRemoteTool") && bridge.includes("fromOrigins: [spec.origin]") && bridge.includes("arbitraryOriginSelection: false"), files.bridge, "Bridge execution must remain fixed to exact provider origin and tool pairs.");
 check("bridge_approval_gate", bridge.includes("bridgeCapabilityAllowed") && bridge.includes("requiresHumanApproval") && bridge.includes("readPlanStatus") && bridge.includes("HUMAN_APPROVAL_REQUIRED"), files.bridge, "Top-level commit wrappers must be registration-time and invocation-time gated by exact human approval.");
 check("bridge_provider_acceptance", bridge.includes("providerAccepted") && bridge.includes("recordApprovalEvidence"), files.bridge, "Approval evidence must be recorded only after provider success.");
 
-const diagnostics = content.diagnostics ?? "";
+const capabilitySurface = content.capabilitySurface ?? "";
+check(
+  "optional_toolchange_event_fallback",
+  bridge.includes('typeof context.addEventListener === "function"')
+    && capabilitySurface.includes('typeof capabilityContext?.addEventListener === "function"')
+    && capabilitySurface.includes("setInterval(() => scheduleRefresh(), 500)")
+    && diagnostics.includes('typeof context.addEventListener === "function"'),
+  `${files.bridge}, ${files.capabilitySurface}, ${files.diagnostics}`,
+  "Clients without the optional toolchange event surface must remain operational through bounded polling.",
+);
+
 check("diagnostic_release_identity", diagnostics.includes("compiledReleaseSha") && diagnostics.includes("readDiagnosticReleaseIdentity") && diagnostics.includes("provenancePass") && diagnostics.includes("const overallPass = provenancePass"), files.diagnostics, "The production ChatGPT diagnostic must identify and enforce the exact deployed release.");
 check("diagnostic_semantic_probes", diagnostics.includes("semanticSuccess") && diagnostics.includes("providerExecutionPass"), files.diagnostics, "Listed tools are insufficient; provider execution must return semantic success.");
 check("diagnostic_audit_v2", diagnostics.includes('schema: "relay.audit.v2"') && diagnostics.includes("evaluateAuditConsistency"), files.diagnostics, "Final evidence must use exact audit equality v2.");

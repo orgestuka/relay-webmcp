@@ -15,6 +15,7 @@ document.body.append(panel);
 
 let refreshGeneration = 0;
 let refreshTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+let refreshInterval: ReturnType<typeof globalThis.setInterval> | null = null;
 
 function originLabel(origin: string | undefined): string {
   if (!origin || origin === window.location.origin) return "Relay";
@@ -130,8 +131,17 @@ function scheduleRefresh(delayMs = 0): void {
   }, delayMs);
 }
 
-getModelContext()?.addEventListener("toolchange", () => scheduleRefresh(35));
+const capabilityContext = getModelContext();
+if (typeof capabilityContext?.addEventListener === "function") {
+  capabilityContext.addEventListener("toolchange", () => scheduleRefresh(35));
+} else {
+  refreshInterval = globalThis.setInterval(() => scheduleRefresh(), 500);
+}
 window.addEventListener("load", () => {
   scheduleRefresh();
   scheduleRefresh(700);
 });
+window.addEventListener("pagehide", () => {
+  if (refreshTimer !== null) globalThis.clearTimeout(refreshTimer);
+  if (refreshInterval !== null) globalThis.clearInterval(refreshInterval);
+}, { once: true });

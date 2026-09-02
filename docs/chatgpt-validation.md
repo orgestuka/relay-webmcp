@@ -176,6 +176,12 @@ Required fields:
 }
 ```
 
+Experimental clients that implement `registerTool`, `getTools` and `executeTool`
+but omit the optional `toolchange` event surface may report
+`toolchangeListenerInstalled: false`. Relay must remain operational through its
+bounded polling fallback; capability creation and teardown still have to be
+proved from successive diagnostic captures.
+
 Every provider entry must contain:
 
 ```json

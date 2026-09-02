@@ -411,7 +411,9 @@ async function bootBridge(): Promise<void> {
     },
   });
 
-  context.addEventListener("toolchange", () => scheduleSync());
+  if (typeof context.addEventListener === "function") {
+    context.addEventListener("toolchange", () => scheduleSync());
+  }
   scheduleSync(0);
   globalThis.setTimeout(() => scheduleSync(0), 300);
   globalThis.setTimeout(() => scheduleSync(0), 900);

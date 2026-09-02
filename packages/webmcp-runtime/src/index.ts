@@ -27,7 +27,8 @@ export type ToolInputGuard = (
   input: Record<string, unknown>,
 ) => Promise<Record<string, unknown>> | Record<string, unknown>;
 
-interface ModelContextLike extends EventTarget {
+interface ModelContextLike {
+  addEventListener?: EventTarget["addEventListener"];
   registerTool(tool: ToolDefinition, options?: { signal?: AbortSignal; exposedTo?: string[] }): Promise<void>;
   getTools?(options?: { fromOrigins?: string[] }): Promise<RegisteredTool[]>;
   executeTool?(tool: RegisteredTool, input?: string, options?: ToolExecutionOptions): Promise<string | null>;

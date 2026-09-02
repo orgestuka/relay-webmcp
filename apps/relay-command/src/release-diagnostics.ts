@@ -94,6 +94,7 @@ const expectedInitialBridgeTools = [
 const evidence: ToolchangeEvidence[] = [];
 let evidenceSequence = 0;
 let captureTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+let toolchangeListenerInstalled = false;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -257,7 +258,10 @@ async function registerReleaseTools(): Promise<void> {
   const context = getModelContext();
   if (!context) return;
 
-  context.addEventListener("toolchange", () => scheduleCapture("toolchange"));
+  toolchangeListenerInstalled = typeof context.addEventListener === "function";
+  if (toolchangeListenerInstalled) {
+    context.addEventListener!("toolchange", () => scheduleCapture("toolchange"));
+  }
 
   await registerTool({
     name: "relay_diagnose_webmcp",
@@ -348,7 +352,7 @@ async function registerReleaseTools(): Promise<void> {
           registerTool: Boolean(modelContext?.registerTool),
           getTools: Boolean(modelContext?.getTools),
           executeTool: Boolean(modelContext?.executeTool),
-          toolchangeListenerInstalled: true,
+          toolchangeListenerInstalled,
         },
         relay: {
           expectedPermanentTools: permanentRelayTools,
