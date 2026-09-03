@@ -1,4 +1,5 @@
 import "./style.css";
+import "./approval-summary.css";
 import type {
   ApprovalPayload,
   ApprovalToken,
@@ -786,8 +787,11 @@ function renderApprovalModal(): string {
       <p>The agent is paused. Approval signs only these operations, provider origins, state versions, completion deadline and costs for two minutes.</p>
       <div class="approval-hash"><span>PLAN HASH</span><code>${escapeHtml(pendingApproval.payload.planHash)}</code></div>
       <div class="approval-lines">${currentPlan.proposals.map((proposal) => `<div><span>${labelForProvider(proposal.providerId)} · ${escapeHtml(proposal.resourceLabel)}</span><b>${proposal.quantity} ${escapeHtml(proposal.unit)} · ${money(proposal.totalCost)}</b><small>${escapeHtml(proposal.providerOrigin)} · ${escapeHtml(shortId(proposal.proposalId))} · state v${proposal.stateVersion}</small></div>`).join("")}</div>
-      <div class="approval-total"><span>Completion deadline</span><strong>${escapeHtml(currentPlan.completionDeadline)}</strong></div>
-      <div class="approval-total"><span>Maximum authority</span><strong>${money(pendingApproval.payload.maximumCost)}</strong></div>
+      <div class="approval-summary">
+        <div class="approval-total approval-transaction-total"><span>Exact transaction total</span><strong>${money(currentPlan.totalCost)}</strong></div>
+        <div class="approval-total"><span>Completion deadline</span><strong>${escapeHtml(currentPlan.completionDeadline)}</strong></div>
+        <div class="approval-total"><span>Maximum authority</span><strong>${money(pendingApproval.payload.maximumCost)}</strong></div>
+      </div>
       <div class="approval-actions"><button id="reject-plan" class="reject-button">Reject</button><button id="approve-plan" class="approve-button">Approve & sign PACT token</button></div>
       <small class="approval-footnote">No capacity changes until the agent presents this signed token back to every exact scoped provider.</small>
     </section>

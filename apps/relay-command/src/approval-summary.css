@@ -1,0 +1,66 @@
+.approval-summary {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr 1fr;
+  margin: 14px 0;
+  overflow: hidden;
+  border: 1px solid #24464b;
+  border-radius: 10px;
+  background: #071114;
+}
+
+.approval-summary .approval-total {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  padding: 11px 12px;
+  border-left: 1px solid #1a3439;
+}
+
+.approval-summary .approval-total:first-child {
+  border-left: 0;
+}
+
+.approval-summary .approval-total span {
+  color: #739096;
+  font-size: 8px;
+  letter-spacing: 0.05em;
+}
+
+.approval-summary .approval-total strong {
+  font-size: 17px;
+}
+
+.approval-summary .approval-transaction-total {
+  background: #0b211f;
+}
+
+.approval-summary .approval-transaction-total span {
+  color: #74cfc4;
+}
+
+.approval-summary .approval-transaction-total strong {
+  color: #9af0df;
+  font-size: 23px;
+}
+
+@media (max-width: 700px) {
+  .approval-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .approval-summary .approval-transaction-total {
+    grid-column: 1 / -1;
+  }
+
+  .approval-summary .approval-total:nth-child(2) {
+    border-top: 1px solid #1a3439;
+    border-left: 0;
+  }
+
+  .approval-summary .approval-total:nth-child(3) {
+    border-top: 1px solid #1a3439;
+  }
+}
